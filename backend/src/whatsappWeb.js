@@ -1,6 +1,7 @@
 import { createRequire } from "module";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
 import qrcode from "qrcode";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
@@ -12,6 +13,7 @@ process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
 const require = createRequire(import.meta.url);
 const { Client, LocalAuth } = require("whatsapp-web.js");
+const installChromeScript = fileURLToPath(new URL("../scripts/install-chrome.js", import.meta.url));
 
 function findChrome() {
   try {
@@ -24,8 +26,31 @@ function findChrome() {
   return null;
 }
 
-const chromePath = findChrome();
+function installChromeIfMissing() {
+  console.log("[WhatsApp] Chrome missing, installing Puppeteer browser...");
+  execFileSync(process.execPath, [installChromeScript], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      PUPPETEER_CACHE_DIR: CACHE_DIR,
+    },
+  });
+}
+
+let chromePath = config.whatsappWeb.executablePath || findChrome();
+
+if (!chromePath) {
+  installChromeIfMissing();
+  chromePath = config.whatsappWeb.executablePath || findChrome();
+}
+
 console.log("[WhatsApp] Chrome:", chromePath || `not found in ${CACHE_DIR}`);
+
+if (!chromePath) {
+  throw new Error(
+    `Could not find Chrome after install attempt. Set WHATSAPP_WEB_EXECUTABLE_PATH or verify Puppeteer browser installation in ${CACHE_DIR}.`
+  );
+}
 
 let client = null;
 let clientStatus = "disconnected";
@@ -37,8 +62,8 @@ function getClient() {
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: config.whatsappWeb.userDataDir }),
     puppeteer: {
-      headless: true,
-      executablePath: chromePath || undefined,
+      headless: config.whatsappWeb.headless,
+      executablePath: chromePath,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",

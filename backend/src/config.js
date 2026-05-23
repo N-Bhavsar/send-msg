@@ -60,6 +60,12 @@ export const config = {
   },
   whatsappWeb: {
     enabled: process.env.WHATSAPP_WEB_ENABLED !== "false",
-    userDataDir: process.env.WHATSAPP_WEB_USER_DATA_DIR || (process.platform === "linux" ? "/tmp/whatsapp-session" : "whatsapp-session"),
+    userDataDir:
+      process.env.WHATSAPP_WEB_USER_DATA_DIR ||
+      (process.platform === "linux" ? "/tmp/whatsapp-session" : "whatsapp-session"),
+    headless: process.env.WHATSAPP_WEB_HEADLESS !== "false",
+    executablePath,
+    loginTimeoutMs: Number(process.env.WHATSAPP_WEB_LOGIN_TIMEOUT_MS || 120000),
+    sendDelayMs: Number(process.env.WHATSAPP_WEB_SEND_DELAY_MS || 1500),
   },
 };
