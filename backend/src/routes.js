@@ -166,19 +166,12 @@ export function buildRouter() {
 
   router.post("/whatsapp-web/send/:recordId", requireAuth, async (req, res) => {
     try {
-      const store = readStore();
-      const records = Array.isArray(store.records) ? store.records : [];
-      const record = records.find((item) => String(item.id) === String(req.params.recordId));
-
-      if (!record) {
-        return res.status(404).json({ message: "Record not found" });
-      }
-
-      await sendWhatsAppWebMessage(record);
+      const result = await sendReminderForRecord(req.params.recordId);
       return res.json({
-        message: `WhatsApp sent to ${record.name}`,
+        message: `WhatsApp sent to ${result.name}`,
         sentCount: 1,
         failedCount: 0,
+        ...result,
       });
     } catch (error) {
       console.error("WhatsApp Web single send failed", error);
@@ -206,9 +199,10 @@ export function buildRouter() {
 
   router.post("/whatsapp-web/send", requireAuth, upload.single("file"), async (req, res) => {
     try {
+      const fromUploadedFile = Boolean(req.file);
       let records = [];
 
-      if (req.file) {
+      if (fromUploadedFile) {
         records = parseUploadedFile(req.file.path);
         fs.unlink(req.file.path, () => {});
       } else {
@@ -221,6 +215,22 @@ export function buildRouter() {
       }
 
       const result = await sendWhatsAppWebMessages(records);
+      if (!fromUploadedFile && result.sentRecords.length) {
+        const store = readStore();
+        const sentIds = new Set(result.sentRecords.map((record) => String(record.id)));
+        const todayStamp = new Date().toISOString().slice(0, 10);
+
+        store.records = (Array.isArray(store.records) ? store.records : []).map((record) =>
+          sentIds.has(String(record.id))
+            ? {
+                ...record,
+                lastReminderSentOn: todayStamp,
+              }
+            : record
+        );
+        writeStore(store);
+      }
+
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,
@@ -240,6 +250,22 @@ export function buildRouter() {
       }
 
       const result = await sendWhatsAppWebMessages(records);
+      if (result.sentRecords.length) {
+        const store = readStore();
+        const sentIds = new Set(result.sentRecords.map((record) => String(record.id)));
+        const todayStamp = new Date().toISOString().slice(0, 10);
+
+        store.records = (Array.isArray(store.records) ? store.records : []).map((record) =>
+          sentIds.has(String(record.id))
+            ? {
+                ...record,
+                lastReminderSentOn: todayStamp,
+              }
+            : record
+        );
+        writeStore(store);
+      }
+
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,

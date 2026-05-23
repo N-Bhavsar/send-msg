@@ -6,7 +6,7 @@ export function getToken() {
 
 function authHeaders() {
   return {
-    "x-auth-token": getToken(),//sfdc
+    "x-auth-token": getToken(),
   };
 }
 
@@ -126,20 +126,6 @@ export async function sendWhatsAppWeb(file) {
   if (!res.ok) {
     throw new Error(data.message || "WhatsApp Web send failed");
   }
-  return data;
-}
-
-export async function sendWhatsAppWebRecord(recordId) {
-  const res = await fetch(`${API_BASE}/whatsapp-web/send/${recordId}`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || "WhatsApp Web send failed");
-  }
-
   return data;
 }
 

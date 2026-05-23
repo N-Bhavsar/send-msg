@@ -9,8 +9,8 @@ const frontendUrl = rawFrontendUrl
   .map((url) => url.trim())
   .filter(Boolean);
 
-const whatsappProvider =
-  process.env.WHATSAPP_PROVIDER || "web";
+const isRender = process.env.RENDER === "true";
+const whatsappProvider = process.env.WHATSAPP_PROVIDER || (isRender ? "callmebot" : "web");
 
 const rawExecutablePath =
   process.env.WHATSAPP_WEB_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || "";
@@ -60,6 +60,7 @@ export const config = {
   reminderRunOnStartup: process.env.REMINDER_RUN_ON_STARTUP === "true",
   whatsapp: {
     provider: whatsappProvider,
+    callMeBotApiKey: process.env.CALLMEBOT_API_KEY || "",
   },
   whatsappWeb: {
     enabled: whatsappProvider === "web" && process.env.WHATSAPP_WEB_ENABLED !== "false",

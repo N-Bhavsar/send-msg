@@ -25,6 +25,16 @@ function buildWhatsAppWebUrl(phoneNumber, message) {
   return `https://web.whatsapp.com/send?${query.toString()}`;
 }
 
+function buildCallMeBotUrl(phoneNumber, message) {
+  const query = new URLSearchParams({
+    phone: String(phoneNumber || "").trim(),
+    text: message,
+    apikey: config.whatsapp.callMeBotApiKey,
+  });
+
+  return `https://api.callmebot.com/whatsapp.php?${query.toString()}`;
+}
+
 function findBrowserInDirectory(directoryPath) {
   if (!existsSync(directoryPath)) {
     return "";
@@ -138,6 +148,35 @@ async function handleUseHereDialog(page) {
 }
 
 async function sendMessageOnPage(page, delayMs) {
+  await page.waitForFunction(
+    () => {
+      const selectors = [
+        "button[data-testid='compose-btn-send']",
+        "button[aria-label*='Send']",
+        "button span[data-icon='send']",
+      ];
+
+      return selectors.some((selector) => document.querySelector(selector));
+    },
+    { timeout: delayMs }
+  ).catch(() => {});
+
+  const sendSelectors = [
+    "button[data-testid='compose-btn-send']",
+    "button[aria-label*='Send']",
+    "button span[data-icon='send']",
+  ];
+
+  for (const selector of sendSelectors) {
+    const element = await page.$(selector);
+    if (element) {
+      await element.click();
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return;
+    }
+  }
+
+  await page.focus("div[role='textbox']");
   await page.keyboard.press("Enter");
   await new Promise((resolve) => setTimeout(resolve, delayMs));
 }
@@ -210,15 +249,59 @@ async function sendRecordWithBrowser(record) {
   }
 }
 
+async function sendRecordWithCallMeBot(record) {
+  if (!config.whatsapp.callMeBotApiKey) {
+    throw new Error(
+      "CALLMEBOT_API_KEY is required when WHATSAPP_PROVIDER is set to callmebot or when running on Render."
+    );
+  }
+
+  const phone = String(record.phoneNumber || "").trim();
+  const message = buildReminderMessage(record);
+
+  if (!phone) {
+    throw new Error("Phone number is missing");
+  }
+
+  const response = await fetch(buildCallMeBotUrl(phone, message));
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(body || `CallMeBot request failed with status ${response.status}`);
+  }
+
+  return { provider: "callmebot", response: body };
+}
+
+async function sendRecord(record) {
+  if (config.whatsapp.provider === "callmebot") {
+    return sendRecordWithCallMeBot(record);
+  }
+
+  return sendRecordWithBrowser(record);
+}
+
 export async function getWhatsAppStatus() {
   return {
-    enabled: true,
-    provider: "web",
+    enabled:
+      config.whatsapp.provider === "callmebot"
+        ? Boolean(config.whatsapp.callMeBotApiKey)
+        : config.whatsappWeb.enabled,
+    provider: config.whatsapp.provider,
     status: "available",
   };
 }
 
 export async function getWhatsAppQR() {
+  if (config.whatsapp.provider === "callmebot") {
+    return {
+      enabled: true,
+      qr: null,
+      provider: "callmebot",
+      message: "CallMeBot mode does not use QR login.",
+    };
+  }
+
   return {
     enabled: true,
     qr: null,
@@ -228,22 +311,26 @@ export async function getWhatsAppQR() {
 }
 
 export async function sendWhatsAppWebMessage(record) {
-  await sendRecordWithBrowser(record);
+  await sendRecord(record);
 }
 
 export async function sendWhatsAppWebMessages(records) {
   let sentCount = 0;
   let failedCount = 0;
+  const sentRecords = [];
+  const failedRecords = [];
 
   for (const record of records) {
     try {
       await sendWhatsAppWebMessage(record);
       sentCount += 1;
+      sentRecords.push(record);
     } catch (error) {
       failedCount += 1;
+      failedRecords.push({ record, error: error?.message || String(error) });
       console.error(`WhatsApp Web send failed for ${record.phoneNumber}`, error.message);
     }
   }
 
-  return { sentCount, failedCount };
+  return { sentCount, failedCount, sentRecords, failedRecords };
 }

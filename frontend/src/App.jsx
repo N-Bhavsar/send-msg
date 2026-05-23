@@ -5,7 +5,7 @@ import {
   deleteRecord,
   loginApi,
   runReminderCheck,
-  sendWhatsAppWebRecord,
+  sendReminderNow,
   sendWhatsAppWebNearExpiry,
   uploadFile,
 } from "./api";
@@ -214,7 +214,7 @@ function DashboardPage() {
     setSendingRecordId(String(row.id));
 
     try {
-      const result = await sendWhatsAppWebRecord(row.id);
+      const result = await sendReminderNow(row.id);
       setStatus(result.message || `WhatsApp sent to ${row.name}`);
       await loadRecords();
     } catch (err) {
@@ -241,24 +241,6 @@ function DashboardPage() {
       setError(err.message || "Failed to delete record");
     } finally {
       setDeletingRecordId("");
-    }
-  }
-
-  async function handleSendWhatsAppWeb() {
-    setError("");
-    setStatus("");
-    setSendingWeb(true);
-
-    try {
-      const result = await sendWhatsAppWeb(file);
-      setStatus(
-        `WhatsApp Web done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`
-      );
-      await loadRecords();
-    } catch (err) {
-      setError(err.message || "WhatsApp Web send failed");
-    } finally {
-      setSendingWeb(false);
     }
   }
 
