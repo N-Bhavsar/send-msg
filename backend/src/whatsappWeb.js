@@ -25,16 +25,6 @@ function buildWhatsAppWebUrl(phoneNumber, message) {
   return `https://web.whatsapp.com/send?${query.toString()}`;
 }
 
-function buildCallMeBotUrl(phoneNumber, message) {
-  const query = new URLSearchParams({
-    phone: String(phoneNumber || "").trim(),
-    text: message,
-    apikey: config.whatsapp.callMeBotApiKey,
-  });
-
-  return `https://api.callmebot.com/whatsapp.php?${query.toString()}`;
-}
-
 function findBrowserInDirectory(directoryPath) {
   if (!existsSync(directoryPath)) {
     return "";
@@ -249,59 +239,15 @@ async function sendRecordWithBrowser(record) {
   }
 }
 
-async function sendRecordWithCallMeBot(record) {
-  if (!config.whatsapp.callMeBotApiKey) {
-    throw new Error(
-      "CALLMEBOT_API_KEY is required when WHATSAPP_PROVIDER is set to callmebot or when running on Render."
-    );
-  }
-
-  const phone = String(record.phoneNumber || "").trim();
-  const message = buildReminderMessage(record);
-
-  if (!phone) {
-    throw new Error("Phone number is missing");
-  }
-
-  const response = await fetch(buildCallMeBotUrl(phone, message));
-  const body = await response.text();
-
-  if (!response.ok) {
-    throw new Error(body || `CallMeBot request failed with status ${response.status}`);
-  }
-
-  return { provider: "callmebot", response: body };
-}
-
-async function sendRecord(record) {
-  if (config.whatsapp.provider === "callmebot") {
-    return sendRecordWithCallMeBot(record);
-  }
-
-  return sendRecordWithBrowser(record);
-}
-
 export async function getWhatsAppStatus() {
   return {
-    enabled:
-      config.whatsapp.provider === "callmebot"
-        ? Boolean(config.whatsapp.callMeBotApiKey)
-        : config.whatsappWeb.enabled,
-    provider: config.whatsapp.provider,
+    enabled: config.whatsappWeb.enabled,
+    provider: "web",
     status: "available",
   };
 }
 
 export async function getWhatsAppQR() {
-  if (config.whatsapp.provider === "callmebot") {
-    return {
-      enabled: true,
-      qr: null,
-      provider: "callmebot",
-      message: "CallMeBot mode does not use QR login.",
-    };
-  }
-
   return {
     enabled: true,
     qr: null,
@@ -311,7 +257,7 @@ export async function getWhatsAppQR() {
 }
 
 export async function sendWhatsAppWebMessage(record) {
-  await sendRecord(record);
+  await sendRecordWithBrowser(record);
 }
 
 export async function sendWhatsAppWebMessages(records) {
