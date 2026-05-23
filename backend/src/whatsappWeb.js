@@ -1,7 +1,7 @@
 import puppeteer from "puppeteer";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, readdirSync, statSync } from "fs";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
 
@@ -25,6 +25,29 @@ function buildWhatsAppWebUrl(phoneNumber, message) {
   return `https://web.whatsapp.com/send?${query.toString()}`;
 }
 
+function findBrowserInDirectory(directoryPath) {
+  if (!existsSync(directoryPath)) {
+    return "";
+  }
+
+  const entries = readdirSync(directoryPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = `${directoryPath}/${entry.name}`;
+    if (entry.isFile() && entry.name === "chrome") {
+      return entryPath;
+    }
+
+    if (entry.isDirectory()) {
+      const nested = findBrowserInDirectory(entryPath);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return "";
+}
+
 function findChrome() {
   const candidates = [
     config.whatsappWeb.executablePath,
@@ -39,6 +62,20 @@ function findChrome() {
     if (existsSync(candidate)) {
       return candidate;
     }
+  }
+
+  const cacheBrowser = findBrowserInDirectory(CACHE_DIR);
+  if (cacheBrowser) {
+    return cacheBrowser;
+  }
+
+  try {
+    const puppeteerBrowserPath = puppeteer.executablePath();
+    if (puppeteerBrowserPath && existsSync(puppeteerBrowserPath)) {
+      return puppeteerBrowserPath;
+    }
+  } catch {
+    // Ignore and fall back to the install failure below.
   }
 
   return "";
