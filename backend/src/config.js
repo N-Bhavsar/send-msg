@@ -60,6 +60,8 @@ export const config = {
   },
   whatsappWeb: {
     enabled: process.env.WHATSAPP_WEB_ENABLED !== "false",
+    authStrategy:
+      process.env.WHATSAPP_WEB_AUTH_STRATEGY || (process.env.RENDER === "true" ? "noauth" : "localauth"),
     userDataDir:
       process.env.WHATSAPP_WEB_USER_DATA_DIR ||
       (process.platform === "linux" ? "/tmp/whatsapp-session" : "whatsapp-session"),

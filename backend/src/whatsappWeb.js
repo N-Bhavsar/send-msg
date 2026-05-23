@@ -12,7 +12,7 @@ const CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppete
 process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
 const require = createRequire(import.meta.url);
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, LocalAuth, NoAuth } = require("whatsapp-web.js");
 const installChromeScript = fileURLToPath(new URL("../scripts/install-chrome.js", import.meta.url));
 
 function findChrome() {
@@ -35,6 +35,16 @@ function installChromeIfMissing() {
       PUPPETEER_CACHE_DIR: CACHE_DIR,
     },
   });
+}
+
+function resolveAuthStrategy() {
+  if (config.whatsappWeb.authStrategy === "noauth") {
+    console.log("[WhatsApp] Using NoAuth strategy for this environment.");
+    return new NoAuth();
+  }
+
+  console.log("[WhatsApp] Using LocalAuth strategy.");
+  return new LocalAuth({ dataPath: config.whatsappWeb.userDataDir });
 }
 
 let chromePath = config.whatsappWeb.executablePath || findChrome();
@@ -60,7 +70,7 @@ function getClient() {
   if (client) return client;
 
   client = new Client({
-    authStrategy: new LocalAuth({ dataPath: config.whatsappWeb.userDataDir }),
+    authStrategy: resolveAuthStrategy(),
     puppeteer: {
       headless: config.whatsappWeb.headless,
       executablePath: chromePath,
