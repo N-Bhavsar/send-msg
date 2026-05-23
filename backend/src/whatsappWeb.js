@@ -128,27 +128,31 @@ export async function getWhatsAppQR() {
   );
   if (loggedIn) return { loggedIn: true, qr: null };
 
-  // Wait for QR code — WhatsApp Web renders it as an <img> with a data-ref attribute
-  // or inside a div[data-ref]. Try multiple selectors.
-  const qrSelector = await Promise.race([
-    page.waitForSelector("div[data-ref] img", { timeout: 30000 }).then(() => "div[data-ref] img"),
-    page.waitForSelector("img[alt='Scan me!']", { timeout: 30000 }).then(() => "img[alt='Scan me!']"),
-    page.waitForSelector("canvas", { timeout: 30000 }).then(() => "canvas"),
-  ]).catch(() => null);
+  // Wait for page to settle then dump all img/canvas info for debugging
+  await new Promise((r) => setTimeout(r, 8000));
 
-  if (!qrSelector) {
-    throw new Error("QR code element not found on WhatsApp Web page");
-  }
+  const debug = await page.evaluate(() => {
+    const imgs = Array.from(document.querySelectorAll("img")).map((el) => ({
+      src: el.src?.slice(0, 80),
+      alt: el.alt,
+      dataRef: el.closest("[data-ref]") ? el.closest("[data-ref]").getAttribute("data-ref")?.slice(0, 20) : null,
+      parent: el.parentElement?.className?.slice(0, 60),
+    }));
+    const canvases = Array.from(document.querySelectorAll("canvas")).map((el) => ({
+      width: el.width,
+      height: el.height,
+      parent: el.parentElement?.className?.slice(0, 60),
+    }));
+    const svgs = Array.from(document.querySelectorAll("svg")).map((el) => ({
+      parent: el.parentElement?.className?.slice(0, 60),
+      dataTestid: el.closest("[data-testid]")?.getAttribute("data-testid"),
+    }));
+    const bodySnippet = document.body.innerHTML.slice(0, 2000);
+    return { imgs, canvases, svgs, bodySnippet };
+  });
 
-  const qr = await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    if (el.tagName === "CANVAS") return el.toDataURL("image/png");
-    if (el.tagName === "IMG") return el.src;
-    return null;
-  }, qrSelector);
-
-  return { loggedIn: false, qr };
+  console.log("[WhatsApp QR debug]", JSON.stringify(debug, null, 2));
+  throw new Error("QR_DEBUG: check server logs for element info");
 }
 
 function normalizePhoneForWeb(phoneNumber) {
