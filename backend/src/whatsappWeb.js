@@ -142,26 +142,24 @@ export async function getWhatsAppQR() {
   );
   if (loggedIn) return { loggedIn: true, qr: null };
 
-  // Wait for QR code — WhatsApp Web renders it as a <canvas> once past the browser check
-  const qrSelector = await Promise.race([
-    page.waitForSelector("canvas", { timeout: 30000 }).then(() => "canvas"),
-    page.waitForSelector("div[data-ref] img", { timeout: 30000 }).then(() => "div[data-ref] img"),
-    page.waitForSelector("img[alt='Scan me!']", { timeout: 30000 }).then(() => "img[alt='Scan me!']"),
-  ]).catch(() => null);
+  // Wait extra time for WhatsApp Web to fully load
+  await new Promise((r) => setTimeout(r, 5000));
 
-  if (!qrSelector) {
-    throw new Error("QR code not found — WhatsApp Web may still be loading");
-  }
+  // Take a screenshot and dump page info for debugging
+  const screenshot = await page.screenshot({ encoding: "base64", type: "png" });
+  const pageInfo = await page.evaluate(() => {
+    return {
+      url: location.href,
+      title: document.title,
+      bodySnippet: document.body.innerHTML.slice(0, 3000),
+    };
+  });
+  console.log("[WA QR page url]", pageInfo.url);
+  console.log("[WA QR page title]", pageInfo.title);
+  console.log("[WA QR body snippet]", pageInfo.bodySnippet);
+  console.log("[WA QR screenshot base64]", screenshot.slice(0, 100));
 
-  const qr = await page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    if (el.tagName === "CANVAS") return el.toDataURL("image/png");
-    if (el.tagName === "IMG") return el.src;
-    return null;
-  }, qrSelector);
-
-  return { loggedIn: false, qr };
+  return { loggedIn: false, qr: `data:image/png;base64,${screenshot}` };
 }
 
 function normalizePhoneForWeb(phoneNumber) {
