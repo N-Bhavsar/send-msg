@@ -11,14 +11,17 @@ import { buildReminderMessage } from "./whatsapp.js";
 // Find the Chrome executable installed by puppeteer
 function resolveChromePath() {
   const cacheDir = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
-  // Walk cache dir for a chrome binary
-  const candidates = [
-    join(cacheDir, "chrome"),
-  ];
-  for (const base of candidates) {
+  const wwjsCacheDir = join(
+    process.cwd(),
+    "node_modules/whatsapp-web.js/node_modules/puppeteer-core/.local-chromium"
+  );
+
+  const searchDirs = [cacheDir, wwjsCacheDir];
+
+  for (const base of searchDirs) {
     if (!existsSync(base)) continue;
     try {
-      const result = execSync(`find ${base} -name 'chrome' -type f 2>/dev/null | head -1`)
+      const result = execSync(`find "${base}" -name 'chrome' -o -name 'chromium' -o -name 'chrome-linux' 2>/dev/null | grep -v '\.pak' | head -1`)
         .toString().trim();
       if (result && existsSync(result)) return result;
     } catch { /* ignore */ }
@@ -28,7 +31,14 @@ function resolveChromePath() {
 
 const chromePath = resolveChromePath();
 if (chromePath) console.log("[WhatsApp] Using Chrome at:", chromePath);
-else console.warn("[WhatsApp] Chrome not found, whatsapp-web.js will try its own.");
+else {
+  // Log cache contents to help debug
+  try {
+    const cacheDir = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
+    const ls = execSync(`find "${cacheDir}" -type f -name 'chrom*' 2>/dev/null || echo 'empty'`).toString().trim();
+    console.warn("[WhatsApp] Chrome not found. Cache contents:", ls);
+  } catch { console.warn("[WhatsApp] Chrome not found and cache unreadable."); }
+}
 
 let client = null;
 let clientStatus = "disconnected"; // disconnected | qr | connecting | connected

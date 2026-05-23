@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "postinstall": "npx puppeteer browsers install chrome",
-    "build": "npx puppeteer browsers install chrome"
+    "postinstall": "node scripts/install-chrome.js",
+    "build": "node scripts/install-chrome.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
