@@ -1,9 +1,34 @@
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { Client, LocalAuth } = require("whatsapp-web.js");
+import { execSync } from "child_process";
+import { existsSync } from "fs";
+import { join } from "path";
 import qrcode from "qrcode";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
+
+// Find the Chrome executable installed by puppeteer
+function resolveChromePath() {
+  const cacheDir = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
+  // Walk cache dir for a chrome binary
+  const candidates = [
+    join(cacheDir, "chrome"),
+  ];
+  for (const base of candidates) {
+    if (!existsSync(base)) continue;
+    try {
+      const result = execSync(`find ${base} -name 'chrome' -type f 2>/dev/null | head -1`)
+        .toString().trim();
+      if (result && existsSync(result)) return result;
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+const chromePath = resolveChromePath();
+if (chromePath) console.log("[WhatsApp] Using Chrome at:", chromePath);
+else console.warn("[WhatsApp] Chrome not found, whatsapp-web.js will try its own.");
 
 let client = null;
 let clientStatus = "disconnected"; // disconnected | qr | connecting | connected
@@ -16,6 +41,7 @@ function getClient() {
     authStrategy: new LocalAuth({ dataPath: config.whatsappWeb.userDataDir }),
     puppeteer: {
       headless: true,
+      executablePath: chromePath || undefined,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
