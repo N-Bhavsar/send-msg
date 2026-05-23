@@ -7,7 +7,6 @@ import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
 import { readStore, writeStore } from "./storage.js";
-import { sendWhatsAppReminders } from "./whatsapp.js";
 import {
   sendWhatsAppWebMessage,
   sendWhatsAppWebMessages,

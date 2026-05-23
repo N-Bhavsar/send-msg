@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { config } from "./config.js";
 import { readStore, writeStore } from "./storage.js";
-import { sendWhatsAppReminder } from "./whatsapp.js";
+import { sendWhatsAppWebMessage } from "./whatsappWeb.js";
 
 function daysBetween(start, end) {
   const msPerDay = 1000 * 60 * 60 * 24;
@@ -66,15 +66,12 @@ export async function processDailyReminders() {
     }
 
     try {
-      const result = await sendWhatsAppReminder(record);
-      if (!result.skipped) {
-        record.lastReminderSentOn = todayStamp;
-        sentCount += 1;
-        hasUpdates = true;
-      } else {
-        skippedCount += 1;
-      }
+      await sendWhatsAppWebMessage(record);
+      record.lastReminderSentOn = todayStamp;
+      sentCount += 1;
+      hasUpdates = true;
     } catch (error) {
+      skippedCount += 1;
       console.error(`Reminder failed for ${record.phoneNumber}`, error.message);
     }
   }
@@ -96,14 +93,12 @@ export async function sendReminderForRecord(recordId) {
     throw new Error("Record not found");
   }
 
-  const result = await sendWhatsAppReminder(record);
-  if (!result.skipped) {
-    record.lastReminderSentOn = new Date().toISOString().slice(0, 10);
-    writeStore(store);
-  }
+  await sendWhatsAppWebMessage(record);
+  record.lastReminderSentOn = new Date().toISOString().slice(0, 10);
+  writeStore(store);
 
   return {
-    skipped: result.skipped,
+    skipped: false,
     phoneNumber: record.phoneNumber,
     name: record.name,
   };
