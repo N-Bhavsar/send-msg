@@ -92,6 +92,24 @@ export async function deleteRecord(recordId) {
   return data;
 }
 
+export async function fetchWhatsAppStatus() {
+  const res = await fetch(`${API_BASE}/whatsapp-web/status`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Failed to get WhatsApp status");
+  return data;
+}
+
+export async function fetchWhatsAppQR() {
+  const res = await fetch(`${API_BASE}/whatsapp-web/qr`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Failed to get QR code");
+  return data;
+}
+
 export async function sendWhatsAppWeb(file) {
   const formData = new FormData();
   if (file) {

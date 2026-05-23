@@ -94,6 +94,50 @@ function enqueue(fn) {
   return taskQueue;
 }
 
+// Persistent QR/session page
+let sessionPage = null;
+
+async function getSessionPage() {
+  const browser = await getSharedBrowser();
+
+  if (sessionPage && !sessionPage.isClosed()) {
+    return sessionPage;
+  }
+
+  sessionPage = await browser.newPage();
+  await sessionPage.goto("https://web.whatsapp.com", { waitUntil: "networkidle2" });
+  return sessionPage;
+}
+
+export async function getWhatsAppStatus() {
+  const page = await getSessionPage();
+  const loggedIn = await page.evaluate(() => {
+    return Boolean(document.querySelector("div[data-testid='chat-list']") ||
+      document.querySelector("div[data-testid='default-user']") ||
+      document.querySelector("#side"));
+  });
+  return { loggedIn };
+}
+
+export async function getWhatsAppQR() {
+  const page = await getSessionPage();
+
+  // If already logged in, no QR needed
+  const loggedIn = await page.evaluate(() =>
+    Boolean(document.querySelector("#side"))
+  );
+  if (loggedIn) return { loggedIn: true, qr: null };
+
+  // Wait for QR canvas to appear
+  await page.waitForSelector("canvas", { timeout: 30000 });
+  const qr = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    return canvas ? canvas.toDataURL("image/png") : null;
+  });
+
+  return { loggedIn: false, qr };
+}
+
 function normalizePhoneForWeb(phoneNumber) {
   const raw = String(phoneNumber || "").trim();
   if (!raw) return "";
@@ -165,6 +209,8 @@ export async function sendWhatsAppWebMessage(record) {
     const message = buildReminderMessage(record);
     const url = buildWhatsAppWebUrl(phone, message);
     const browser = await getSharedBrowser();
+    // Ensure session page exists (keeps session alive)
+    await getSessionPage();
     const page = await browser.newPage();
     try {
       await page.goto(url, { waitUntil: "networkidle2" });

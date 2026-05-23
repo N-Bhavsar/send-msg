@@ -7,7 +7,7 @@ import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
 import { readStore, writeStore } from "./storage.js";
-import { sendWhatsAppWebMessages } from "./whatsappWeb.js";
+import { sendWhatsAppWebMessages, getWhatsAppStatus, getWhatsAppQR } from "./whatsappWeb.js";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -156,6 +156,24 @@ export function buildRouter() {
       console.error("Send reminder failed", error);
       const status = error.message === "Record not found" ? 404 : 500;
       return res.status(status).json({ message: error.message || "Send reminder failed" });
+    }
+  });
+
+  router.get("/whatsapp-web/status", requireAuth, async (_req, res) => {
+    try {
+      const result = await getWhatsAppStatus();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ message: error.message || "Failed to get status" });
+    }
+  });
+
+  router.get("/whatsapp-web/qr", requireAuth, async (_req, res) => {
+    try {
+      const result = await getWhatsAppQR();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ message: error.message || "Failed to get QR" });
     }
   });
 

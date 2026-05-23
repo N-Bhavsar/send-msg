@@ -9,6 +9,8 @@ import {
   sendWhatsAppWeb,
   sendWhatsAppWebNearExpiry,
   uploadFile,
+  fetchWhatsAppStatus,
+  fetchWhatsAppQR,
 } from "./api";
 
 function isAuthenticated() {
@@ -283,6 +285,41 @@ function DashboardPage() {
     }
   }
 
+  const [waStatus, setWaStatus] = useState(null); // null | 'connected' | 'disconnected'
+  const [waQR, setWaQR] = useState(null);
+  const [waLoading, setWaLoading] = useState(false);
+
+  async function checkWaStatus() {
+    setWaLoading(true);
+    setWaQR(null);
+    try {
+      const result = await fetchWhatsAppStatus();
+      setWaStatus(result.loggedIn ? "connected" : "disconnected");
+    } catch {
+      setWaStatus("disconnected");
+    } finally {
+      setWaLoading(false);
+    }
+  }
+
+  async function loadQR() {
+    setWaLoading(true);
+    try {
+      const result = await fetchWhatsAppQR();
+      if (result.loggedIn) {
+        setWaStatus("connected");
+        setWaQR(null);
+      } else {
+        setWaQR(result.qr);
+        setWaStatus("disconnected");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load QR");
+    } finally {
+      setWaLoading(false);
+    }
+  }
+
   function logout() {
     localStorage.removeItem("authToken");
     navigate("/", { replace: true });
@@ -314,6 +351,31 @@ function DashboardPage() {
             <span>Expired</span>
             <strong>{summary.expired}</strong>
           </div>
+        </div>
+
+        <div className="wa-session-panel">
+          <div className="wa-session-header">
+            <span>WhatsApp Session</span>
+            {waStatus === "connected" && <span className="wa-badge connected">● Connected</span>}
+            {waStatus === "disconnected" && <span className="wa-badge disconnected">● Disconnected</span>}
+          </div>
+          <div className="wa-session-actions">
+            <button onClick={checkWaStatus} disabled={waLoading}>
+              {waLoading ? "Checking..." : "Check Status"}
+            </button>
+            {waStatus !== "connected" && (
+              <button onClick={loadQR} disabled={waLoading}>
+                {waLoading ? "Loading..." : "Show QR Code"}
+              </button>
+            )}
+          </div>
+          {waQR && (
+            <div className="wa-qr-wrap">
+              <p>Scan this QR code with WhatsApp on your phone:</p>
+              <img src={waQR} alt="WhatsApp QR Code" className="wa-qr-img" />
+              <button onClick={loadQR} disabled={waLoading}>Refresh QR</button>
+            </div>
+          )}
         </div>
 
         <div className="upload-row">
