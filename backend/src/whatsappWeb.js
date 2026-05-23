@@ -132,6 +132,9 @@ async function sendRecordWithBrowser(record) {
   }
 
   const chromePath = await ensureChrome();
+  console.log(
+    `[WhatsApp] Launching browser. headless=${config.whatsappWeb.headless} executablePath=${chromePath} userDataDir=${config.whatsappWeb.userDataDir}`
+  );
   const browser = await puppeteer.launch({
     headless: config.whatsappWeb.headless,
     executablePath: chromePath,
