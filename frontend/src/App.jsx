@@ -305,13 +305,21 @@ function DashboardPage() {
   async function loadQR() {
     setWaLoading(true);
     try {
-      const result = await fetchWhatsAppQR();
+      // Poll up to 30s for QR to appear
+      let result = null;
+      for (let i = 0; i < 10; i++) {
+        result = await fetchWhatsAppQR();
+        if (result.loggedIn || result.qr) break;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
       if (result.loggedIn) {
         setWaStatus("connected");
         setWaQR(null);
-      } else {
+      } else if (result.qr) {
         setWaQR(result.qr);
         setWaStatus("disconnected");
+      } else {
+        setError("QR not ready yet — try again in a few seconds");
       }
     } catch (err) {
       setError(err.message || "Failed to load QR");
