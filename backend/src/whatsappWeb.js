@@ -176,11 +176,30 @@ async function sendRecordWithBrowser(record) {
     headless: config.whatsappWeb.headless,
     executablePath: chromePath,
     userDataDir: config.whatsappWeb.userDataDir,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--disable-blink-features=AutomationControlled",
+      "--window-size=1200,800",
+    ],
   });
 
   try {
     const page = await browser.newPage();
+    // Evasion: set a normal user agent and overwrite automation flags
+    const userAgent =
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36";
+    await page.setUserAgent(userAgent);
+    await page.setViewport({ width: 1200, height: 800 });
+
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+      window.navigator.chrome = { runtime: {} };
+    });
     await page.goto(url, { waitUntil: "networkidle2" });
     await handleUseHereDialog(page);
     await waitForChatInput(page, config.whatsappWeb.loginTimeoutMs);
