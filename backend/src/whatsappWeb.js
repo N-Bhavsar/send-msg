@@ -1,47 +1,34 @@
 import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { Client, LocalAuth } = require("whatsapp-web.js");
 import { execSync } from "child_process";
 import { existsSync } from "fs";
-import { join } from "path";
 import qrcode from "qrcode";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
 
-// Find the Chrome executable installed by puppeteer
-function resolveChromePath() {
-  const cacheDir = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
-  const wwjsCacheDir = join(
-    process.cwd(),
-    "node_modules/whatsapp-web.js/node_modules/puppeteer-core/.local-chromium"
-  );
+// Must be set BEFORE requiring whatsapp-web.js so its bundled puppeteer-core
+// uses the same cache directory where chrome was installed
+const CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
+process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
-  const searchDirs = [cacheDir, wwjsCacheDir];
+const require = createRequire(import.meta.url);
+const { Client, LocalAuth } = require("whatsapp-web.js");
 
-  for (const base of searchDirs) {
-    if (!existsSync(base)) continue;
-    try {
-      const result = execSync(`find "${base}" -name 'chrome' -o -name 'chromium' -o -name 'chrome-linux' 2>/dev/null | grep -v '\.pak' | head -1`)
-        .toString().trim();
-      if (result && existsSync(result)) return result;
-    } catch { /* ignore */ }
-  }
+function findChrome() {
+  try {
+    const out = execSync(
+      `find "${CACHE_DIR}" -type f \\( -name "chrome" -o -name "chromium" \\) 2>/dev/null | head -1`,
+      { encoding: "utf8" }
+    ).trim();
+    if (out && existsSync(out)) return out;
+  } catch { /* ignore */ }
   return null;
 }
 
-const chromePath = resolveChromePath();
-if (chromePath) console.log("[WhatsApp] Using Chrome at:", chromePath);
-else {
-  // Log cache contents to help debug
-  try {
-    const cacheDir = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
-    const ls = execSync(`find "${cacheDir}" -type f -name 'chrom*' 2>/dev/null || echo 'empty'`).toString().trim();
-    console.warn("[WhatsApp] Chrome not found. Cache contents:", ls);
-  } catch { console.warn("[WhatsApp] Chrome not found and cache unreadable."); }
-}
+const chromePath = findChrome();
+console.log("[WhatsApp] Chrome:", chromePath || `not found in ${CACHE_DIR}`);
 
 let client = null;
-let clientStatus = "disconnected"; // disconnected | qr | connecting | connected
+let clientStatus = "disconnected";
 let currentQR = null;
 
 function getClient() {
@@ -64,7 +51,7 @@ function getClient() {
   client.on("qr", async (qr) => {
     clientStatus = "qr";
     currentQR = await qrcode.toDataURL(qr);
-    console.log("[WhatsApp] QR received");
+    console.log("[WhatsApp] QR ready");
   });
 
   client.on("authenticated", () => {
@@ -90,7 +77,6 @@ function getClient() {
   return client;
 }
 
-// Start client on module load
 getClient();
 
 export async function getWhatsAppStatus() {
@@ -104,14 +90,13 @@ export async function getWhatsAppQR() {
 }
 
 export async function sendWhatsAppWebMessage(record) {
-  if (clientStatus !== "connected") throw new Error("WhatsApp is not connected. Please scan the QR code first.");
+  if (clientStatus !== "connected")
+    throw new Error("WhatsApp is not connected. Please scan the QR code first.");
 
   const phone = String(record.phoneNumber || "").trim().replace(/\D/g, "");
   if (!phone) throw new Error("Phone number is missing");
 
-  const chatId = `${phone}@c.us`;
-  const message = buildReminderMessage(record);
-  await client.sendMessage(chatId, message);
+  await client.sendMessage(`${phone}@c.us`, buildReminderMessage(record));
 }
 
 export async function sendWhatsAppWebMessages(records) {
