@@ -12,7 +12,6 @@ const execFileAsync = (command, args) =>
         reject(error);
         return;
       }
-
       resolve({ stdout, stderr });
     });
   });
@@ -22,17 +21,12 @@ let browserInstallPromise = null;
 async function ensureChromeBrowserInstalled() {
   if (!browserInstallPromise) {
     browserInstallPromise = execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", [
-      "exec",
-      "puppeteer",
-      "browsers",
-      "install",
-      "chrome",
+      "exec", "puppeteer", "browsers", "install", "chrome",
     ]).catch((error) => {
       browserInstallPromise = null;
       throw error;
     });
   }
-
   return browserInstallPromise;
 }
 
@@ -41,18 +35,63 @@ function isMissingChromeError(error) {
   return /Could not find Chrome|Could not find Chromium|Browser was not found/i.test(message);
 }
 
-async function launchBrowser(launchOptions) {
-  try {
-    return await puppeteer.launch(launchOptions);
-  } catch (error) {
-    if (!config.whatsappWeb.executablePath && isMissingChromeError(error)) {
-      console.warn("Chrome was missing for WhatsApp Web automation. Installing Puppeteer browser and retrying once.");
-      await ensureChromeBrowserInstalled();
-      return puppeteer.launch(launchOptions);
+// Shared browser singleton
+let sharedBrowser = null;
+let browserLaunchPromise = null;
+
+async function getSharedBrowser() {
+  if (sharedBrowser) {
+    try {
+      // Verify it's still alive
+      await sharedBrowser.pages();
+      return sharedBrowser;
+    } catch {
+      sharedBrowser = null;
+      browserLaunchPromise = null;
+    }
+  }
+
+  if (!browserLaunchPromise) {
+    const launchOptions = {
+      headless: config.whatsappWeb.headless,
+      userDataDir: config.whatsappWeb.userDataDir,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    };
+    if (config.whatsappWeb.executablePath) {
+      launchOptions.executablePath = config.whatsappWeb.executablePath;
     }
 
-    throw error;
+    browserLaunchPromise = (async () => {
+      try {
+        sharedBrowser = await puppeteer.launch(launchOptions);
+      } catch (error) {
+        if (!config.whatsappWeb.executablePath && isMissingChromeError(error)) {
+          console.warn("Chrome missing — installing and retrying.");
+          await ensureChromeBrowserInstalled();
+          sharedBrowser = await puppeteer.launch(launchOptions);
+        } else {
+          throw error;
+        }
+      } finally {
+        browserLaunchPromise = null;
+      }
+      sharedBrowser.on("disconnected", () => {
+        sharedBrowser = null;
+        browserLaunchPromise = null;
+      });
+      return sharedBrowser;
+    })();
   }
+
+  return browserLaunchPromise;
+}
+
+// Serial task queue — prevents concurrent page operations on the same session
+let taskQueue = Promise.resolve();
+
+function enqueue(fn) {
+  taskQueue = taskQueue.then(fn, fn);
+  return taskQueue;
 }
 
 function normalizePhoneForWeb(phoneNumber) {
@@ -117,90 +156,45 @@ async function waitForSendConfirmation(page, timeoutMs) {
 }
 
 export async function sendWhatsAppWebMessage(record) {
-  if (!config.whatsappWeb.enabled) {
-    throw new Error("WhatsApp Web automation is disabled");
-  }
+  if (!config.whatsappWeb.enabled) throw new Error("WhatsApp Web automation is disabled");
 
   const phone = record.phoneNumber || "";
-  const message = buildReminderMessage(record);
-  const url = buildWhatsAppWebUrl(phone, message);
+  if (!phone.trim()) throw new Error("Phone number is missing");
 
-  if (!phone.trim()) {
-    throw new Error("Phone number is missing");
-  }
-
-  const launchOptions = {
-    headless: config.whatsappWeb.headless,
-    userDataDir: config.whatsappWeb.userDataDir,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  };
-
-  if (config.whatsappWeb.executablePath) {
-    launchOptions.executablePath = config.whatsappWeb.executablePath;
-  }
-
-  const browser = await launchBrowser(launchOptions);
-
-  try {
+  return enqueue(async () => {
+    const message = buildReminderMessage(record);
+    const url = buildWhatsAppWebUrl(phone, message);
+    const browser = await getSharedBrowser();
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "networkidle2" });
-    await handleUseHereDialog(page);
-    await waitForChatInput(page, config.whatsappWeb.loginTimeoutMs);
-    await sendMessageOnPage(page, config.whatsappWeb.sendDelayMs);
-    await waitForSendConfirmation(page, config.whatsappWeb.loginTimeoutMs);
-  } finally {
-    await browser.close();
-  }
+    try {
+      await page.goto(url, { waitUntil: "networkidle2" });
+      await handleUseHereDialog(page);
+      await waitForChatInput(page, config.whatsappWeb.loginTimeoutMs);
+      await sendMessageOnPage(page, config.whatsappWeb.sendDelayMs);
+      await waitForSendConfirmation(page, config.whatsappWeb.loginTimeoutMs);
+    } finally {
+      await page.close();
+    }
+  });
 }
 
 export async function sendWhatsAppWebMessages(records) {
-  if (!config.whatsappWeb.enabled) {
-    throw new Error("WhatsApp Web automation is disabled");
-  }
-
-  const launchOptions = {
-    headless: config.whatsappWeb.headless,
-    userDataDir: config.whatsappWeb.userDataDir,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  };
-
-  if (config.whatsappWeb.executablePath) {
-    launchOptions.executablePath = config.whatsappWeb.executablePath;
-  }
-
-  const browser = await launchBrowser(launchOptions);
+  if (!config.whatsappWeb.enabled) throw new Error("WhatsApp Web automation is disabled");
 
   let sentCount = 0;
   let failedCount = 0;
 
-  try {
-    for (const record of records) {
-      const phone = record.phoneNumber || "";
-      const message = buildReminderMessage(record);
-      const url = buildWhatsAppWebUrl(phone, message);
+  for (const record of records) {
+    const phone = record.phoneNumber || "";
+    if (!phone.trim()) { failedCount += 1; continue; }
 
-      if (!phone.trim()) {
-        failedCount += 1;
-        continue;
-      }
-
-      const page = await browser.newPage();
-      try {
-        await page.goto(url, { waitUntil: "networkidle2" });
-        await handleUseHereDialog(page);
-        await waitForChatInput(page, config.whatsappWeb.loginTimeoutMs);
-        await sendMessageOnPage(page, config.whatsappWeb.sendDelayMs);
-        await waitForSendConfirmation(page, config.whatsappWeb.loginTimeoutMs);
-        sentCount += 1;
-      } catch (error) {
-        failedCount += 1;
-        console.error(`WhatsApp Web send failed for ${phone}`, error.message);
-      } finally {
-        await page.close();
-      }
+    try {
+      await sendWhatsAppWebMessage(record);
+      sentCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      console.error(`WhatsApp Web send failed for ${phone}`, error.message);
     }
-  } finally {
-    await browser.close();
   }
 
   return { sentCount, failedCount };
