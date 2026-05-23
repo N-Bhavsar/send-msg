@@ -128,12 +128,25 @@ export async function getWhatsAppQR() {
   );
   if (loggedIn) return { loggedIn: true, qr: null };
 
-  // Wait for QR canvas to appear
-  await page.waitForSelector("canvas", { timeout: 30000 });
-  const qr = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    return canvas ? canvas.toDataURL("image/png") : null;
-  });
+  // Wait for QR code — WhatsApp Web renders it as an <img> with a data-ref attribute
+  // or inside a div[data-ref]. Try multiple selectors.
+  const qrSelector = await Promise.race([
+    page.waitForSelector("div[data-ref] img", { timeout: 30000 }).then(() => "div[data-ref] img"),
+    page.waitForSelector("img[alt='Scan me!']", { timeout: 30000 }).then(() => "img[alt='Scan me!']"),
+    page.waitForSelector("canvas", { timeout: 30000 }).then(() => "canvas"),
+  ]).catch(() => null);
+
+  if (!qrSelector) {
+    throw new Error("QR code element not found on WhatsApp Web page");
+  }
+
+  const qr = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    if (el.tagName === "CANVAS") return el.toDataURL("image/png");
+    if (el.tagName === "IMG") return el.src;
+    return null;
+  }, qrSelector);
 
   return { loggedIn: false, qr };
 }
