@@ -5,16 +5,50 @@ import {
   deleteRecord,
   loginApi,
   runReminderCheck,
-  sendReminderNow,
-  sendWhatsAppWeb,
-  sendWhatsAppWebNearExpiry,
   uploadFile,
-  fetchWhatsAppStatus,
-  fetchWhatsAppQR,
 } from "./api";
 
 function isAuthenticated() {
   return localStorage.getItem("authToken") === "demo-admin-token";
+}
+
+function normalizePhoneForWhatsApp(phoneNumber) {
+  return String(phoneNumber || "").trim().replace(/\D/g, "");
+}
+
+function buildReminderMessage(record) {
+  const expiryText = new Date(record.expiryDate).toISOString().slice(0, 10);
+  const vehicleNumber = record.vehicleNumber || record.vehicleNo || "UNKNOWN";
+  return (
+    `Hello ${record.name},\n` +
+    `This is a reminder that the insurance for your VEHICAL NO (${vehicleNumber}) is about to expire on ${expiryText}.\n` +
+    "Please renew your insurance on time."
+  );
+}
+
+function buildWhatsAppSendUrl(record) {
+  const phone = normalizePhoneForWhatsApp(record.phoneNumber);
+  const text = buildReminderMessage(record);
+  const query = new URLSearchParams({ phone, text });
+  return `https://web.whatsapp.com/send?${query.toString()}`;
+}
+
+function openWhatsAppTab(record) {
+  const url = buildWhatsAppSendUrl(record);
+  const tab = window.open(url, "_blank", "noopener,noreferrer");
+
+  if (tab) {
+    tab.focus();
+    window.setTimeout(() => {
+      try {
+        tab.close();
+      } catch {
+        // Ignore browser restrictions.
+      }
+    }, 10000);
+  }
+
+  return Boolean(tab);
 }
 
 function LoginPage() {
@@ -94,10 +128,7 @@ function DashboardPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [runningReminder, setRunningReminder] = useState(false);
-  const [sendingRecordId, setSendingRecordId] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState("");
-  const [sendingWeb, setSendingWeb] = useState(false);
-  const [sendingNearExpiry, setSendingNearExpiry] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -158,7 +189,6 @@ function DashboardPage() {
     }
 
     loadRecords();
-    checkWaStatus();
   }, [navigate]);
 
   async function loadRecords() {
@@ -217,16 +247,12 @@ function DashboardPage() {
   async function handleSendNow(row) {
     setError("");
     setStatus("");
-    setSendingRecordId(String(row.id));
+    const opened = openWhatsAppTab(row);
 
-    try {
-      const result = await sendReminderNow(row.id);
-      setStatus(result.message || `Reminder sent to ${row.name}`);
-      await loadRecords();
-    } catch (err) {
-      setError(err.message || "Failed to send reminder");
-    } finally {
-      setSendingRecordId("");
+    if (opened) {
+      setStatus(`Opened WhatsApp tab for ${row.name}. Send the message, then the tab will close automatically.`);
+    } else {
+      setError("Popup blocked. Allow popups for this site and try again.");
     }
   }
 
@@ -271,61 +297,28 @@ function DashboardPage() {
   async function handleSendNearExpiry() {
     setError("");
     setStatus("");
-    setSendingNearExpiry(true);
-
-    try {
-      const result = await sendWhatsAppWebNearExpiry();
-      setStatus(
-        `Reminder send done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`
-      );
-      await loadRecords();
-    } catch (err) {
-      setError(err.message || "Reminder send failed");
-    } finally {
-      setSendingNearExpiry(false);
-    }
-  }
-
-  const [waStatus, setWaStatus] = useState(null); // null | 'connected' | 'disconnected'
-  const [waQR, setWaQR] = useState(null);
-  const [waLoading, setWaLoading] = useState(false);
-
-  async function checkWaStatus() {
-    setWaLoading(true);
-    setWaQR(null);
-    try {
-      const result = await fetchWhatsAppStatus();
-      setWaStatus(result.loggedIn ? "connected" : "disconnected");
-    } catch {
-      setWaStatus("disconnected");
-    } finally {
-      setWaLoading(false);
-    }
-  }
-
-  async function loadQR() {
-    setWaLoading(true);
-    try {
-      // Poll up to 30s for QR to appear
-      let result = null;
-      for (let i = 0; i < 10; i++) {
-        result = await fetchWhatsAppQR();
-        if (result.loggedIn || result.qr) break;
-        await new Promise((r) => setTimeout(r, 3000));
+    const now = new Date();
+    const openedRecords = records.filter((record) => {
+      const expiry = new Date(record.expiryDate);
+      if (Number.isNaN(expiry.getTime())) {
+        return false;
       }
-      if (result.loggedIn) {
-        setWaStatus("connected");
-        setWaQR(null);
-      } else if (result.qr) {
-        setWaQR(result.qr);
-        setWaStatus("disconnected");
-      } else {
-        setError("QR not ready yet — try again in a few seconds");
+
+      const diffDays = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 3;
+    });
+
+    let openedCount = 0;
+    for (const record of openedRecords) {
+      if (openWhatsAppTab(record)) {
+        openedCount += 1;
       }
-    } catch (err) {
-      setError(err.message || "Failed to load QR");
-    } finally {
-      setWaLoading(false);
+    }
+
+    if (openedCount > 0) {
+      setStatus(`Opened ${openedCount} WhatsApp tab(s) for near-expiry reminders.`);
+    } else {
+      setError("Popup blocked or no near-expiry records were found.");
     }
   }
 
@@ -362,29 +355,11 @@ function DashboardPage() {
           </div>
         </div>
 
-        <div className="wa-session-panel">
-          <div className="wa-session-header">
-            <span>WhatsApp Session</span>
-            {waStatus === "connected" && <span className="wa-badge connected">● Connected</span>}
-            {waStatus === "disconnected" && <span className="wa-badge disconnected">● Disconnected</span>}
+        <div className="direct-wa-panel">
+          <div>
+            <strong>Direct WhatsApp mode</strong>
+            <p>Each send action opens WhatsApp in a new tab, then closes it automatically after a short delay.</p>
           </div>
-          <div className="wa-session-actions">
-            <button onClick={checkWaStatus} disabled={waLoading}>
-              {waLoading ? "Checking..." : "Check Status"}
-            </button>
-            {waStatus !== "connected" && (
-              <button onClick={loadQR} disabled={waLoading}>
-                {waLoading ? "Loading..." : "Show QR Code"}
-              </button>
-            )}
-          </div>
-          {waQR && (
-            <div className="wa-qr-wrap">
-              <p>Scan this QR code with WhatsApp on your phone:</p>
-              <img src={waQR} alt="WhatsApp QR Code" className="wa-qr-img" />
-              <button onClick={loadQR} disabled={waLoading}>Refresh QR</button>
-            </div>
-          )}
         </div>
 
         <div className="upload-row">
@@ -397,8 +372,8 @@ function DashboardPage() {
           <button onClick={handleUpload} disabled={loading}>
             {loading ? "Uploading..." : "Upload File"}
           </button>
-          <button onClick={handleSendNearExpiry} disabled={sendingNearExpiry}>
-            {sendingNearExpiry ? "Sending..." : "Send All (Near Expiry)"}
+          <button onClick={handleSendNearExpiry}>
+            Open WhatsApp Tabs (Near Expiry)
           </button>
         </div>
 
@@ -452,9 +427,8 @@ function DashboardPage() {
                         <button
                           className="table-btn"
                           onClick={() => handleSendNow(row)}
-                          disabled={sendingRecordId === String(row.id)}
                         >
-                          {sendingRecordId === String(row.id) ? "Sending..." : "Send Now"}
+                          Open WhatsApp
                         </button>
                         <button
                           className="table-btn danger-btn"

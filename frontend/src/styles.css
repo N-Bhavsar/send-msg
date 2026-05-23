@@ -234,6 +234,19 @@ button:disabled {
   border-radius: 12px;
 }
 
+.direct-wa-panel {
+  border: 1px dashed rgba(31, 42, 46, 0.22);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(10, 127, 112, 0.08), rgba(255, 255, 255, 0.88));
+  margin-bottom: 14px;
+}
+
+.direct-wa-panel p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
 .upload-row input[type="file"] {
   flex: 1;
 }
