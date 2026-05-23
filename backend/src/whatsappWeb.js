@@ -1,4 +1,6 @@
-import { Client, LocalAuth } from "whatsapp-web.js";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { Client, LocalAuth } = require("whatsapp-web.js");
 import qrcode from "qrcode";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
