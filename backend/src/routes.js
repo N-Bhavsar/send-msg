@@ -6,10 +6,14 @@ import { login, requireAuth } from "./auth.js";
 import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
-import { config } from "./config.js";
 import { readStore, writeStore } from "./storage.js";
 import { sendWhatsAppReminders } from "./whatsapp.js";
-import { sendWhatsAppWebMessages, getWhatsAppStatus, getWhatsAppQR } from "./whatsappWeb.js";
+import {
+  sendWhatsAppWebMessage,
+  sendWhatsAppWebMessages,
+  getWhatsAppStatus,
+  getWhatsAppQR,
+} from "./whatsappWeb.js";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -29,14 +33,6 @@ const upload = multer({
 
 export function buildRouter() {
   const router = express.Router();
-
-  async function sendConfiguredReminders(records) {
-    if (config.whatsapp.provider === "callmebot") {
-      return sendWhatsAppReminders(records);
-    }
-
-    return sendWhatsAppWebMessages(records);
-  }
 
   router.get("/", (_req, res) => {
     res.json({ ok: true, message: "API running" });
@@ -169,6 +165,28 @@ export function buildRouter() {
     }
   });
 
+  router.post("/whatsapp-web/send/:recordId", requireAuth, async (req, res) => {
+    try {
+      const store = readStore();
+      const records = Array.isArray(store.records) ? store.records : [];
+      const record = records.find((item) => String(item.id) === String(req.params.recordId));
+
+      if (!record) {
+        return res.status(404).json({ message: "Record not found" });
+      }
+
+      await sendWhatsAppWebMessage(record);
+      return res.json({
+        message: `WhatsApp sent to ${record.name}`,
+        sentCount: 1,
+        failedCount: 0,
+      });
+    } catch (error) {
+      console.error("WhatsApp Web single send failed", error);
+      return res.status(500).json({ message: error.message || "WhatsApp Web send failed" });
+    }
+  });
+
   router.get("/whatsapp-web/status", requireAuth, async (_req, res) => {
     try {
       const result = await getWhatsAppStatus();
@@ -203,7 +221,7 @@ export function buildRouter() {
         return res.status(400).json({ message: "No records found to send." });
       }
 
-      const result = await sendConfiguredReminders(records);
+      const result = await sendWhatsAppWebMessages(records);
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,
@@ -222,7 +240,7 @@ export function buildRouter() {
         return res.status(400).json({ message: "No near-expiry records found." });
       }
 
-      const result = await sendConfiguredReminders(records);
+      const result = await sendWhatsAppWebMessages(records);
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,
