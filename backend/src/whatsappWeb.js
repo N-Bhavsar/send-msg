@@ -1,6 +1,59 @@
 import puppeteer from "puppeteer";
+import { execFile } from "node:child_process";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
+
+const execFileAsync = (command, args) =>
+  new Promise((resolve, reject) => {
+    execFile(command, args, { windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+
+      resolve({ stdout, stderr });
+    });
+  });
+
+let browserInstallPromise = null;
+
+async function ensureChromeBrowserInstalled() {
+  if (!browserInstallPromise) {
+    browserInstallPromise = execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", [
+      "exec",
+      "puppeteer",
+      "browsers",
+      "install",
+      "chrome",
+    ]).catch((error) => {
+      browserInstallPromise = null;
+      throw error;
+    });
+  }
+
+  return browserInstallPromise;
+}
+
+function isMissingChromeError(error) {
+  const message = String(error?.message || "");
+  return /Could not find Chrome|Could not find Chromium|Browser was not found/i.test(message);
+}
+
+async function launchBrowser(launchOptions) {
+  try {
+    return await puppeteer.launch(launchOptions);
+  } catch (error) {
+    if (!config.whatsappWeb.executablePath && isMissingChromeError(error)) {
+      console.warn("Chrome was missing for WhatsApp Web automation. Installing Puppeteer browser and retrying once.");
+      await ensureChromeBrowserInstalled();
+      return puppeteer.launch(launchOptions);
+    }
+
+    throw error;
+  }
+}
 
 function normalizePhoneForWeb(phoneNumber) {
   const raw = String(phoneNumber || "").trim();
@@ -86,7 +139,7 @@ export async function sendWhatsAppWebMessage(record) {
     launchOptions.executablePath = config.whatsappWeb.executablePath;
   }
 
-  const browser = await puppeteer.launch(launchOptions);
+  const browser = await launchBrowser(launchOptions);
 
   try {
     const page = await browser.newPage();
@@ -115,7 +168,7 @@ export async function sendWhatsAppWebMessages(records) {
     launchOptions.executablePath = config.whatsappWeb.executablePath;
   }
 
-  const browser = await puppeteer.launch(launchOptions);
+  const browser = await launchBrowser(launchOptions);
 
   let sentCount = 0;
   let failedCount = 0;

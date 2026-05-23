@@ -11,11 +11,37 @@ const frontendUrl = rawFrontendUrl
 
 const rawExecutablePath =
   process.env.WHATSAPP_WEB_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || "";
-const executablePath = rawExecutablePath && existsSync(rawExecutablePath) ? rawExecutablePath : "";
+const commonLinuxChromePaths = [
+  "/usr/bin/google-chrome",
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/snap/bin/chromium",
+];
+
+function resolveExecutablePath() {
+  if (rawExecutablePath && existsSync(rawExecutablePath)) {
+    return rawExecutablePath;
+  }
+
+  for (const candidate of commonLinuxChromePaths) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+const executablePath = resolveExecutablePath();
 
 if (rawExecutablePath && !executablePath) {
   console.warn(
     `Configured Chrome executable path not found: ${rawExecutablePath}. Falling back to Puppeteer default.`
+  );
+} else if (!rawExecutablePath && !executablePath) {
+  console.warn(
+    "No Chrome/Chromium executable was found on this machine. WhatsApp Web automation will rely on Puppeteer's downloaded browser."
   );
 }
 
