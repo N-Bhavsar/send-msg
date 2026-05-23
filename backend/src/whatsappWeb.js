@@ -42,7 +42,6 @@ let browserLaunchPromise = null;
 async function getSharedBrowser() {
   if (sharedBrowser) {
     try {
-      // Verify it's still alive
       await sharedBrowser.pages();
       return sharedBrowser;
     } catch {
@@ -55,7 +54,13 @@ async function getSharedBrowser() {
     const launchOptions = {
       headless: config.whatsappWeb.headless,
       userDataDir: config.whatsappWeb.userDataDir,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--window-size=1280,800",
+      ],
     };
     if (config.whatsappWeb.executablePath) {
       launchOptions.executablePath = config.whatsappWeb.executablePath;
@@ -78,6 +83,7 @@ async function getSharedBrowser() {
       sharedBrowser.on("disconnected", () => {
         sharedBrowser = null;
         browserLaunchPromise = null;
+        sessionPage = null;
       });
       return sharedBrowser;
     })();
@@ -105,6 +111,15 @@ async function getSessionPage() {
   }
 
   sessionPage = await browser.newPage();
+
+  // Spoof user-agent and hide automation signals
+  await sessionPage.setUserAgent(
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  );
+  await sessionPage.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  });
+
   await sessionPage.goto("https://web.whatsapp.com", { waitUntil: "networkidle2" });
   return sessionPage;
 }
@@ -122,37 +137,31 @@ export async function getWhatsAppStatus() {
 export async function getWhatsAppQR() {
   const page = await getSessionPage();
 
-  // If already logged in, no QR needed
   const loggedIn = await page.evaluate(() =>
     Boolean(document.querySelector("#side"))
   );
   if (loggedIn) return { loggedIn: true, qr: null };
 
-  // Wait for page to settle then dump all img/canvas info for debugging
-  await new Promise((r) => setTimeout(r, 8000));
+  // Wait for QR code — WhatsApp Web renders it as a <canvas> once past the browser check
+  const qrSelector = await Promise.race([
+    page.waitForSelector("canvas", { timeout: 30000 }).then(() => "canvas"),
+    page.waitForSelector("div[data-ref] img", { timeout: 30000 }).then(() => "div[data-ref] img"),
+    page.waitForSelector("img[alt='Scan me!']", { timeout: 30000 }).then(() => "img[alt='Scan me!']"),
+  ]).catch(() => null);
 
-  const debug = await page.evaluate(() => {
-    const imgs = Array.from(document.querySelectorAll("img")).map((el) => ({
-      src: el.src?.slice(0, 80),
-      alt: el.alt,
-      dataRef: el.closest("[data-ref]") ? el.closest("[data-ref]").getAttribute("data-ref")?.slice(0, 20) : null,
-      parent: el.parentElement?.className?.slice(0, 60),
-    }));
-    const canvases = Array.from(document.querySelectorAll("canvas")).map((el) => ({
-      width: el.width,
-      height: el.height,
-      parent: el.parentElement?.className?.slice(0, 60),
-    }));
-    const svgs = Array.from(document.querySelectorAll("svg")).map((el) => ({
-      parent: el.parentElement?.className?.slice(0, 60),
-      dataTestid: el.closest("[data-testid]")?.getAttribute("data-testid"),
-    }));
-    const bodySnippet = document.body.innerHTML.slice(0, 2000);
-    return { imgs, canvases, svgs, bodySnippet };
-  });
+  if (!qrSelector) {
+    throw new Error("QR code not found — WhatsApp Web may still be loading");
+  }
 
-  console.log("[WhatsApp QR debug]", JSON.stringify(debug, null, 2));
-  throw new Error("QR_DEBUG: check server logs for element info");
+  const qr = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    if (el.tagName === "CANVAS") return el.toDataURL("image/png");
+    if (el.tagName === "IMG") return el.src;
+    return null;
+  }, qrSelector);
+
+  return { loggedIn: false, qr };
 }
 
 function normalizePhoneForWeb(phoneNumber) {
