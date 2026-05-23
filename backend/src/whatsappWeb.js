@@ -135,6 +135,7 @@ async function sendRecordWithBrowser(record) {
   const browser = await puppeteer.launch({
     headless: config.whatsappWeb.headless,
     executablePath: chromePath,
+    userDataDir: config.whatsappWeb.userDataDir,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
   });
 
