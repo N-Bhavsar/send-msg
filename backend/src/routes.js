@@ -6,7 +6,9 @@ import { login, requireAuth } from "./auth.js";
 import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
+import { config } from "./config.js";
 import { readStore, writeStore } from "./storage.js";
+import { sendWhatsAppReminders } from "./whatsapp.js";
 import { sendWhatsAppWebMessages, getWhatsAppStatus, getWhatsAppQR } from "./whatsappWeb.js";
 
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -27,6 +29,14 @@ const upload = multer({
 
 export function buildRouter() {
   const router = express.Router();
+
+  async function sendConfiguredReminders(records) {
+    if (config.whatsapp.provider === "callmebot") {
+      return sendWhatsAppReminders(records);
+    }
+
+    return sendWhatsAppWebMessages(records);
+  }
 
   router.get("/", (_req, res) => {
     res.json({ ok: true, message: "API running" });
@@ -193,7 +203,7 @@ export function buildRouter() {
         return res.status(400).json({ message: "No records found to send." });
       }
 
-      const result = await sendWhatsAppWebMessages(records);
+      const result = await sendConfiguredReminders(records);
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,
@@ -212,7 +222,7 @@ export function buildRouter() {
         return res.status(400).json({ message: "No near-expiry records found." });
       }
 
-      const result = await sendWhatsAppWebMessages(records);
+      const result = await sendConfiguredReminders(records);
       return res.json({
         message: "WhatsApp Web send complete",
         ...result,

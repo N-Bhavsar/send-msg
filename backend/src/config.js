@@ -9,6 +9,9 @@ const frontendUrl = rawFrontendUrl
   .map((url) => url.trim())
   .filter(Boolean);
 
+const whatsappProvider =
+  process.env.WHATSAPP_PROVIDER || (process.env.CALLMEBOT_API_KEY ? "callmebot" : "web");
+
 const rawExecutablePath =
   process.env.WHATSAPP_WEB_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || "";
 const commonLinuxChromePaths = [
@@ -58,8 +61,11 @@ export const config = {
   callmebot: {
     apiKey: process.env.CALLMEBOT_API_KEY,
   },
+  whatsapp: {
+    provider: whatsappProvider,
+  },
   whatsappWeb: {
-    enabled: process.env.WHATSAPP_WEB_ENABLED !== "false",
+    enabled: whatsappProvider === "web" && process.env.WHATSAPP_WEB_ENABLED !== "false",
     authStrategy:
       process.env.WHATSAPP_WEB_AUTH_STRATEGY || (process.env.RENDER === "true" ? "noauth" : "localauth"),
     userDataDir:

@@ -158,6 +158,7 @@ function DashboardPage() {
     }
 
     loadRecords();
+    checkWaStatus();
   }, [navigate]);
 
   async function loadRecords() {
@@ -275,11 +276,11 @@ function DashboardPage() {
     try {
       const result = await sendWhatsAppWebNearExpiry();
       setStatus(
-        `WhatsApp Web done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`
+        `Reminder send done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`
       );
       await loadRecords();
     } catch (err) {
-      setError(err.message || "WhatsApp Web send failed");
+      setError(err.message || "Reminder send failed");
     } finally {
       setSendingNearExpiry(false);
     }

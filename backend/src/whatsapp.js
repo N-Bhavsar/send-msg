@@ -40,3 +40,24 @@ export async function sendWhatsAppReminder(record) {
 
   return { skipped: false, response: responseText.trim() };
 }
+
+export async function sendWhatsAppReminders(records) {
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const record of records) {
+    try {
+      const result = await sendWhatsAppReminder(record);
+      if (result.skipped) {
+        continue;
+      }
+
+      sentCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      console.error(`CallMeBot reminder failed for ${record.phoneNumber}`, error.message);
+    }
+  }
+
+  return { sentCount, failedCount };
+}
