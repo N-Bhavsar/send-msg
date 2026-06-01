@@ -7,7 +7,8 @@ const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 const frontendUrl = rawFrontendUrl
   .split(",")
   .map((url) => url.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+  .map((url) => url.replace(/\/+$/, ""));
 
 const whatsappProvider = process.env.WHATSAPP_PROVIDER || "web";
 
