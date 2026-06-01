@@ -178,6 +178,31 @@ export async function getWhatsAppQR() {
   return { loggedIn: false, qr: currentQR };
 }
 
+export async function resetWhatsAppClient() {
+  if (!usingWebProvider) {
+    return { loggedIn: true, qr: null, provider: "callmebot" };
+  }
+
+  if (usingManualWeb) {
+    return { loggedIn: true, qr: null, provider: "web", mode: "manual" };
+  }
+
+  if (client) {
+    try {
+      await client.destroy();
+    } catch (error) {
+      console.warn("[WhatsApp] Failed to destroy client:", error.message || error);
+    }
+  }
+
+  client = null;
+  clientStatus = "disconnected";
+  currentQR = null;
+
+  getClient();
+  return { loggedIn: false, qr: currentQR };
+}
+
 export async function sendWhatsAppWebMessage(record) {
   if (!usingWebProvider) {
     throw new Error("WhatsApp Web is disabled. Use the CallMeBot reminder flow instead.");

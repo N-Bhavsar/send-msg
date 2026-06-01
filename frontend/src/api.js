@@ -147,3 +147,16 @@ export async function fetchWhatsAppQr() {
   }
   return data;
 }
+
+export async function refreshWhatsAppQr() {
+  const res = await fetch(`${API_BASE}/whatsapp-web/refresh`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to refresh WhatsApp QR");
+  }
+  return data;
+}

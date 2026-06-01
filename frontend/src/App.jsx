@@ -6,6 +6,7 @@ import {
   fetchWhatsAppQr,
   fetchWhatsAppStatus,
   loginApi,
+  refreshWhatsAppQr,
   runReminderCheck,
   sendReminderNow,
   sendWhatsAppWeb,
@@ -198,6 +199,21 @@ function DashboardPage() {
       setShowQr(true);
     } catch (err) {
       setError(err.message || "Failed to load WhatsApp QR");
+    } finally {
+      setWhatsAppLoading(false);
+    }
+  }
+
+  async function handleRefreshQr() {
+    setWhatsAppLoading(true);
+    setError("");
+
+    try {
+      const result = await refreshWhatsAppQr();
+      setWhatsAppQr(result.qr || "");
+      setShowQr(true);
+    } catch (err) {
+      setError(err.message || "Failed to refresh WhatsApp QR");
     } finally {
       setWhatsAppLoading(false);
     }
@@ -456,7 +472,7 @@ function DashboardPage() {
               <p className="muted">QR not ready. Click refresh.</p>
             )}
             <div className="modal-actions">
-              <button onClick={handleShowQr} disabled={whatsAppLoading}>
+              <button onClick={handleRefreshQr} disabled={whatsAppLoading}>
                 Refresh QR
               </button>
               <button className="ghost-btn" onClick={loadWhatsAppStatus}>
