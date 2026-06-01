@@ -12,7 +12,8 @@ const CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppete
 process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
 const usingWebProvider = config.whatsapp.provider === "web";
-const usingManualWeb = usingWebProvider && config.whatsappWeb.mode === "manual";
+const requestedManualWeb = usingWebProvider && config.whatsappWeb.mode === "manual";
+let usingManualWeb = requestedManualWeb;
 
 if (!usingWebProvider) {
   console.log("[WhatsApp] CallMeBot mode enabled. QR login is disabled.");
@@ -29,7 +30,7 @@ const installChromeScript = usingWebProvider && !usingManualWeb
   : null;
 
 function findChrome() {
-  if (!usingWebProvider || usingManualWeb) {
+  if (!usingWebProvider || usingManualWeb || process.platform === "win32") {
     return null;
   }
 
@@ -45,6 +46,11 @@ function findChrome() {
 
 function installChromeIfMissing() {
   if (!usingWebProvider || usingManualWeb) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    console.warn("[WhatsApp] Skipping bundled browser install on Windows.");
     return;
   }
 
@@ -77,21 +83,25 @@ function resolveAuthStrategy() {
   return new LocalAuth({ dataPath: config.whatsappWeb.userDataDir });
 }
 
-let chromePath = config.whatsappWeb.executablePath || findChrome();
-
-if (usingWebProvider && !usingManualWeb && !chromePath) {
-  installChromeIfMissing();
-  chromePath = config.whatsappWeb.executablePath || findChrome();
-}
+let chromePath = null;
 
 if (usingWebProvider && !usingManualWeb) {
-  console.log("[WhatsApp] Chrome:", chromePath || `not found in ${CACHE_DIR}`);
-}
+  chromePath = config.whatsappWeb.executablePath || findChrome();
 
-if (usingWebProvider && !usingManualWeb && !chromePath) {
-  throw new Error(
-    `Could not find Chrome after install attempt. Set WHATSAPP_WEB_EXECUTABLE_PATH or verify Puppeteer browser installation in ${CACHE_DIR}.`
-  );
+  if (!chromePath) {
+    installChromeIfMissing();
+    chromePath = config.whatsappWeb.executablePath || findChrome();
+  }
+
+  if (chromePath) {
+    console.log("[WhatsApp] Chrome:", chromePath);
+  } else {
+    console.warn(
+      "[WhatsApp] Chrome not found. Falling back to manual web mode. " +
+        "Set WHATSAPP_WEB_EXECUTABLE_PATH to enable automation."
+    );
+    usingManualWeb = true;
+  }
 }
 
 let client = null;
@@ -175,31 +185,6 @@ export async function getWhatsAppQR() {
 
   if (clientStatus === "connected") return { loggedIn: true, qr: null };
   if (!client) getClient();
-  return { loggedIn: false, qr: currentQR };
-}
-
-export async function resetWhatsAppClient() {
-  if (!usingWebProvider) {
-    return { loggedIn: true, qr: null, provider: "callmebot" };
-  }
-
-  if (usingManualWeb) {
-    return { loggedIn: true, qr: null, provider: "web", mode: "manual" };
-  }
-
-  if (client) {
-    try {
-      await client.destroy();
-    } catch (error) {
-      console.warn("[WhatsApp] Failed to destroy client:", error.message || error);
-    }
-  }
-
-  client = null;
-  clientStatus = "disconnected";
-  currentQR = null;
-
-  getClient();
   return { loggedIn: false, qr: currentQR };
 }
 

@@ -7,7 +7,7 @@ import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
 import { readStore, writeStore } from "./storage.js";
-import { getWhatsAppQR, getWhatsAppStatus, resetWhatsAppClient, sendWhatsAppWebMessages } from "./whatsappWeb.js";
+import { getWhatsAppQR, getWhatsAppStatus, sendWhatsAppWebMessages } from "./whatsappWeb.js";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -202,15 +202,6 @@ export function buildRouter() {
       return res.json(qr);
     } catch (error) {
       return res.status(500).json({ message: error.message || "WhatsApp QR failed" });
-    }
-  });
-
-  router.post("/whatsapp-web/refresh", requireAuth, async (_req, res) => {
-    try {
-      const qr = await resetWhatsAppClient();
-      return res.json(qr);
-    } catch (error) {
-      return res.status(500).json({ message: error.message || "WhatsApp QR refresh failed" });
     }
   });
 

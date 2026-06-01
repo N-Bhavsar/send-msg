@@ -19,10 +19,6 @@ app.use(
 );
 app.use(express.json());
 
-app.get("/", (_req, res) => {
-  res.json({ ok: true, message: "Backend is running" });
-});
-
 app.use("/api", buildRouter());
 
 app.use((err, _req, res, _next) => {

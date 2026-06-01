@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = "http://localhost:5000/api";
 
 export function getToken() {
   return localStorage.getItem("authToken") || "";
@@ -144,19 +144,6 @@ export async function fetchWhatsAppQr() {
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.message || "Failed to fetch WhatsApp QR");
-  }
-  return data;
-}
-
-export async function refreshWhatsAppQr() {
-  const res = await fetch(`${API_BASE}/whatsapp-web/refresh`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || "Failed to refresh WhatsApp QR");
   }
   return data;
 }

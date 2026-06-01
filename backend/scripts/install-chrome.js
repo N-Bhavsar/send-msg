@@ -2,6 +2,11 @@ import { execSync } from "child_process";
 import { existsSync } from "fs";
 import { resolve } from "path";
 
+if (process.platform === "win32") {
+  console.log("Skipping bundled Chrome install on Windows.");
+  process.exit(0);
+}
+
 const CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
 const env = { ...process.env, PUPPETEER_CACHE_DIR: CACHE_DIR };
 
