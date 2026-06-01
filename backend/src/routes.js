@@ -7,12 +7,7 @@ import { parseUploadedFile } from "./excel.js";
 import { getNearExpiryRecords, processDailyReminders, sendReminderForRecord } from "./reminder.js";
 import { buildRecordKeyFromRecord } from "./recordKey.js";
 import { readStore, writeStore } from "./storage.js";
-import {
-  sendWhatsAppWebMessage,
-  sendWhatsAppWebMessages,
-  getWhatsAppStatus,
-  getWhatsAppQR,
-} from "./whatsappWeb.js";
+import { getWhatsAppQR, getWhatsAppStatus, sendWhatsAppWebMessages } from "./whatsappWeb.js";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -32,10 +27,6 @@ const upload = multer({
 
 export function buildRouter() {
   const router = express.Router();
-
-  router.get("/", (_req, res) => {
-    res.json({ ok: true, message: "API running" });
-  });
 
   router.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -158,51 +149,16 @@ export function buildRouter() {
         ...result,
       });
     } catch (error) {
-      console.error("Send reminder failed", error);
       const status = error.message === "Record not found" ? 404 : 500;
       return res.status(status).json({ message: error.message || "Send reminder failed" });
     }
   });
 
-  router.post("/whatsapp-web/send/:recordId", requireAuth, async (req, res) => {
-    try {
-      const result = await sendReminderForRecord(req.params.recordId);
-      return res.json({
-        message: `WhatsApp sent to ${result.name}`,
-        sentCount: 1,
-        failedCount: 0,
-        ...result,
-      });
-    } catch (error) {
-      console.error("WhatsApp Web single send failed", error);
-      return res.status(500).json({ message: error.message || "WhatsApp Web send failed" });
-    }
-  });
-
-  router.get("/whatsapp-web/status", requireAuth, async (_req, res) => {
-    try {
-      const result = await getWhatsAppStatus();
-      return res.json(result);
-    } catch (error) {
-      return res.status(500).json({ message: error.message || "Failed to get status" });
-    }
-  });
-
-  router.get("/whatsapp-web/qr", requireAuth, async (_req, res) => {
-    try {
-      const result = await getWhatsAppQR();
-      return res.json(result);
-    } catch (error) {
-      return res.status(500).json({ message: error.message || "Failed to get QR" });
-    }
-  });
-
   router.post("/whatsapp-web/send", requireAuth, upload.single("file"), async (req, res) => {
     try {
-      const fromUploadedFile = Boolean(req.file);
       let records = [];
 
-      if (fromUploadedFile) {
+      if (req.file) {
         records = parseUploadedFile(req.file.path);
         fs.unlink(req.file.path, () => {});
       } else {
@@ -215,20 +171,11 @@ export function buildRouter() {
       }
 
       const result = await sendWhatsAppWebMessages(records);
-      if (!fromUploadedFile && result.sentRecords.length) {
-        const store = readStore();
-        const sentIds = new Set(result.sentRecords.map((record) => String(record.id)));
-        const todayStamp = new Date().toISOString().slice(0, 10);
-
-        store.records = (Array.isArray(store.records) ? store.records : []).map((record) =>
-          sentIds.has(String(record.id))
-            ? {
-                ...record,
-                lastReminderSentOn: todayStamp,
-              }
-            : record
-        );
-        writeStore(store);
+      if (result?.mode === "manual") {
+        return res.json({
+          message: "Open each WhatsApp Web tab and click send.",
+          ...result,
+        });
       }
 
       return res.json({
@@ -236,8 +183,25 @@ export function buildRouter() {
         ...result,
       });
     } catch (error) {
-      console.error("WhatsApp Web send failed", error);
       return res.status(500).json({ message: error.message || "WhatsApp Web send failed" });
+    }
+  });
+
+  router.get("/whatsapp-web/status", requireAuth, async (_req, res) => {
+    try {
+      const status = await getWhatsAppStatus();
+      return res.json(status);
+    } catch (error) {
+      return res.status(500).json({ message: error.message || "WhatsApp status failed" });
+    }
+  });
+
+  router.get("/whatsapp-web/qr", requireAuth, async (_req, res) => {
+    try {
+      const qr = await getWhatsAppQR();
+      return res.json(qr);
+    } catch (error) {
+      return res.status(500).json({ message: error.message || "WhatsApp QR failed" });
     }
   });
 
@@ -250,20 +214,11 @@ export function buildRouter() {
       }
 
       const result = await sendWhatsAppWebMessages(records);
-      if (result.sentRecords.length) {
-        const store = readStore();
-        const sentIds = new Set(result.sentRecords.map((record) => String(record.id)));
-        const todayStamp = new Date().toISOString().slice(0, 10);
-
-        store.records = (Array.isArray(store.records) ? store.records : []).map((record) =>
-          sentIds.has(String(record.id))
-            ? {
-                ...record,
-                lastReminderSentOn: todayStamp,
-              }
-            : record
-        );
-        writeStore(store);
+      if (result?.mode === "manual") {
+        return res.json({
+          message: "Open each WhatsApp Web tab and click send.",
+          ...result,
+        });
       }
 
       return res.json({
@@ -271,7 +226,6 @@ export function buildRouter() {
         ...result,
       });
     } catch (error) {
-      console.error("WhatsApp Web send-near-expiry failed", error);
       return res.status(500).json({ message: error.message || "WhatsApp Web send failed" });
     }
   });

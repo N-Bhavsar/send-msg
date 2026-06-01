@@ -180,73 +180,6 @@ button:disabled {
   margin-bottom: 10px;
 }
 
-.wa-session-panel {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: #fff;
-  margin-bottom: 14px;
-}
-
-.wa-session-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.wa-badge {
-  font-size: 0.85rem;
-  font-weight: 500;
-  padding: 2px 10px;
-  border-radius: 20px;
-}
-
-.wa-badge.connected {
-  background: #d4f5e9;
-  color: var(--ok);
-}
-
-.wa-badge.disconnected {
-  background: #fde8e8;
-  color: var(--error);
-}
-
-.wa-session-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.wa-qr-wrap {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.wa-qr-img {
-  width: 220px;
-  height: 220px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-
-.direct-wa-panel {
-  border: 1px dashed rgba(31, 42, 46, 0.22);
-  border-radius: 14px;
-  padding: 14px 16px;
-  background: linear-gradient(135deg, rgba(10, 127, 112, 0.08), rgba(255, 255, 255, 0.88));
-  margin-bottom: 14px;
-}
-
-.direct-wa-panel p {
-  margin: 6px 0 0;
-  color: var(--muted);
-}
-
 .upload-row input[type="file"] {
   flex: 1;
 }
@@ -319,6 +252,62 @@ th {
 .ok {
   color: var(--ok);
   margin: 4px 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #eef4f2;
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 22, 24, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 20;
+}
+
+.modal-card {
+  width: min(460px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.16);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.qr-image {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+.muted {
+  color: var(--muted);
 }
 
 @keyframes rise {

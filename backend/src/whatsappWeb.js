@@ -1,88 +1,55 @@
-import puppeteer from "puppeteer";
+import { createRequire } from "module";
+import { execFileSync, execSync } from "child_process";
+import { existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { execFileSync } from "child_process";
-import { existsSync, readdirSync, statSync } from "fs";
+import qrcode from "qrcode";
 import { config } from "./config.js";
 import { buildReminderMessage } from "./whatsapp.js";
 
+// Must be set BEFORE requiring whatsapp-web.js so its bundled puppeteer-core
+// uses the same cache directory where chrome was installed
 const CACHE_DIR = process.env.PUPPETEER_CACHE_DIR || "/opt/render/.cache/puppeteer";
 process.env.PUPPETEER_CACHE_DIR = CACHE_DIR;
 
-const installChromeScript = fileURLToPath(new URL("../scripts/install-chrome.js", import.meta.url));
+const usingWebProvider = config.whatsapp.provider === "web";
+const usingManualWeb = usingWebProvider && config.whatsappWeb.mode === "manual";
 
-function normalizePhoneForWeb(phoneNumber) {
-  const raw = String(phoneNumber || "").trim();
-  if (!raw) return "";
-  return raw.replace(/\D/g, "");
+if (!usingWebProvider) {
+  console.log("[WhatsApp] CallMeBot mode enabled. QR login is disabled.");
+} else if (usingManualWeb) {
+  console.log("[WhatsApp] Manual web mode enabled. Browser automation is disabled.");
 }
 
-function buildWhatsAppWebUrl(phoneNumber, message) {
-  const query = new URLSearchParams({
-    phone: normalizePhoneForWeb(phoneNumber),
-    text: message,
-  });
-
-  return `https://web.whatsapp.com/send?${query.toString()}`;
-}
-
-function findBrowserInDirectory(directoryPath) {
-  if (!existsSync(directoryPath)) {
-    return "";
-  }
-
-  const entries = readdirSync(directoryPath, { withFileTypes: true });
-  for (const entry of entries) {
-    const entryPath = `${directoryPath}/${entry.name}`;
-    if (entry.isFile() && entry.name === "chrome") {
-      return entryPath;
-    }
-
-    if (entry.isDirectory()) {
-      const nested = findBrowserInDirectory(entryPath);
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-
-  return "";
-}
+const require = createRequire(import.meta.url);
+const { Client, LocalAuth, NoAuth } = usingWebProvider && !usingManualWeb
+  ? require("whatsapp-web.js")
+  : {};
+const installChromeScript = usingWebProvider && !usingManualWeb
+  ? fileURLToPath(new URL("../scripts/install-chrome.js", import.meta.url))
+  : null;
 
 function findChrome() {
-  const candidates = [
-    config.whatsappWeb.executablePath,
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/snap/bin/chromium",
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  const cacheBrowser = findBrowserInDirectory(CACHE_DIR);
-  if (cacheBrowser) {
-    return cacheBrowser;
+  if (!usingWebProvider || usingManualWeb) {
+    return null;
   }
 
   try {
-    const puppeteerBrowserPath = puppeteer.executablePath();
-    if (puppeteerBrowserPath && existsSync(puppeteerBrowserPath)) {
-      return puppeteerBrowserPath;
-    }
-  } catch {
-    // Ignore and fall back to the install failure below.
-  }
-
-  return "";
+    const out = execSync(
+      `find "${CACHE_DIR}" -type f \\( -name "chrome" -o -name "chromium" \\) 2>/dev/null | head -1`,
+      { encoding: "utf8" }
+    ).trim();
+    if (out && existsSync(out)) return out;
+  } catch { /* ignore */ }
+  return null;
 }
 
 function installChromeIfMissing() {
-  if (findChrome()) {
+  if (!usingWebProvider || usingManualWeb) {
+    return;
+  }
+
+  if (!config.whatsappWeb.allowBundledBrowser) {
+    console.warn("[WhatsApp] Bundled browser install disabled. Set WHATSAPP_WEB_ALLOW_BUNDLED_BROWSER=true to enable.");
     return;
   }
 
@@ -96,187 +63,184 @@ function installChromeIfMissing() {
   });
 }
 
-async function ensureChrome() {
-  let chromePath = findChrome();
-  if (!chromePath) {
-    installChromeIfMissing();
-    chromePath = findChrome();
+function resolveAuthStrategy() {
+  if (!usingWebProvider || usingManualWeb) {
+    return null;
   }
 
-  if (!chromePath) {
-    throw new Error(
-      `Could not find Chrome after install attempt. Set WHATSAPP_WEB_EXECUTABLE_PATH or verify Puppeteer browser installation in ${CACHE_DIR}.`
-    );
+  if (config.whatsappWeb.authStrategy === "noauth") {
+    console.log("[WhatsApp] Using NoAuth strategy for this environment.");
+    return new NoAuth();
   }
 
-  return chromePath;
+  console.log("[WhatsApp] Using LocalAuth strategy.");
+  return new LocalAuth({ dataPath: config.whatsappWeb.userDataDir });
 }
 
-async function waitForChatInput(page, timeoutMs) {
-  await page.waitForSelector("div[role='textbox']", { timeout: timeoutMs });
+let chromePath = config.whatsappWeb.executablePath || findChrome();
+
+if (usingWebProvider && !usingManualWeb && !chromePath) {
+  installChromeIfMissing();
+  chromePath = config.whatsappWeb.executablePath || findChrome();
 }
 
-async function handleUseHereDialog(page) {
-  try {
-    await page.waitForFunction(
-      () => {
-        const buttons = Array.from(document.querySelectorAll("button, a"));
-        const useHere = buttons.find(
-          (button) => button.textContent && button.textContent.trim().toLowerCase() === "use here"
-        );
-        if (useHere) {
-          useHere.click();
-          return true;
-        }
-        return false;
-      },
-      { timeout: 5000 }
-    );
-  } catch {
-    // Ignore when the dialog is not shown.
-  }
+if (usingWebProvider && !usingManualWeb) {
+  console.log("[WhatsApp] Chrome:", chromePath || `not found in ${CACHE_DIR}`);
 }
 
-async function sendMessageOnPage(page, delayMs) {
-  await page.waitForFunction(
-    () => {
-      const selectors = [
-        "button[data-testid='compose-btn-send']",
-        "button[aria-label*='Send']",
-        "button span[data-icon='send']",
-      ];
-
-      return selectors.some((selector) => document.querySelector(selector));
-    },
-    { timeout: delayMs }
-  ).catch(() => {});
-
-  const sendSelectors = [
-    "button[data-testid='compose-btn-send']",
-    "button[aria-label*='Send']",
-    "button span[data-icon='send']",
-  ];
-
-  for (const selector of sendSelectors) {
-    const element = await page.$(selector);
-    if (element) {
-      await element.click();
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      return;
-    }
-  }
-
-  await page.focus("div[role='textbox']");
-  await page.keyboard.press("Enter");
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
-}
-
-async function waitForSendConfirmation(page, timeoutMs) {
-  await page.waitForFunction(
-    () => {
-      const outMessages = document.querySelectorAll("div.message-out");
-      if (!outMessages.length) return false;
-
-      const last = outMessages[outMessages.length - 1];
-      return Boolean(
-        last.querySelector(
-          "span[data-icon='msg-check'], span[data-icon='msg-dblcheck'], span[data-icon='msg-dblcheck-ack']"
-        )
-      );
-    },
-    { timeout: timeoutMs }
+if (usingWebProvider && !usingManualWeb && !chromePath) {
+  throw new Error(
+    `Could not find Chrome after install attempt. Set WHATSAPP_WEB_EXECUTABLE_PATH or verify Puppeteer browser installation in ${CACHE_DIR}.`
   );
 }
 
-async function sendRecordWithBrowser(record) {
-  const phone = record.phoneNumber || "";
-  const message = buildReminderMessage(record);
-  const url = buildWhatsAppWebUrl(phone, message);
+let client = null;
+let clientStatus = "disconnected";
+let currentQR = null;
 
-  if (!phone.trim()) {
-    throw new Error("Phone number is missing");
+function getClient() {
+  if (!usingWebProvider || usingManualWeb) {
+    return null;
   }
 
-  const chromePath = await ensureChrome();
-  console.log(
-    `[WhatsApp] Launching browser. headless=${config.whatsappWeb.headless} executablePath=${chromePath} userDataDir=${config.whatsappWeb.userDataDir}`
-  );
-  const browser = await puppeteer.launch({
-    headless: config.whatsappWeb.headless,
-    executablePath: chromePath,
-    userDataDir: config.whatsappWeb.userDataDir,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-gpu",
-      "--disable-dev-shm-usage",
-      "--disable-blink-features=AutomationControlled",
-      "--window-size=1200,800",
-    ],
+  if (client) return client;
+
+  client = new Client({
+    authStrategy: resolveAuthStrategy(),
+    puppeteer: {
+      headless: config.whatsappWeb.headless,
+      executablePath: chromePath,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+      ],
+    },
   });
 
-  try {
-    const page = await browser.newPage();
-    // Evasion: set a normal user agent and overwrite automation flags
-    const userAgent =
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36";
-    await page.setUserAgent(userAgent);
-    await page.setViewport({ width: 1200, height: 800 });
+  client.on("qr", async (qr) => {
+    clientStatus = "qr";
+    currentQR = await qrcode.toDataURL(qr);
+    console.log("[WhatsApp] QR ready");
+  });
 
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => false });
-      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
-      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
-      window.navigator.chrome = { runtime: {} };
-    });
-    await page.goto(url, { waitUntil: "networkidle2" });
-    await handleUseHereDialog(page);
-    await waitForChatInput(page, config.whatsappWeb.loginTimeoutMs);
-    await sendMessageOnPage(page, config.whatsappWeb.sendDelayMs);
-    await waitForSendConfirmation(page, config.whatsappWeb.loginTimeoutMs);
-  } finally {
-    await browser.close();
-  }
+  client.on("authenticated", () => {
+    clientStatus = "connecting";
+    currentQR = null;
+    console.log("[WhatsApp] Authenticated");
+  });
+
+  client.on("ready", () => {
+    clientStatus = "connected";
+    currentQR = null;
+    console.log("[WhatsApp] Ready");
+  });
+
+  client.on("disconnected", () => {
+    clientStatus = "disconnected";
+    currentQR = null;
+    client = null;
+    console.log("[WhatsApp] Disconnected");
+  });
+
+  client.initialize();
+  return client;
+}
+
+if (!usingManualWeb) {
+  getClient();
 }
 
 export async function getWhatsAppStatus() {
-  return {
-    enabled: config.whatsappWeb.enabled,
-    provider: "web",
-    status: "available",
-  };
+  if (!usingWebProvider) {
+    return { loggedIn: true, status: "callmebot", provider: "callmebot" };
+  }
+
+  if (usingManualWeb) {
+    return { loggedIn: true, status: "manual", provider: "web" };
+  }
+
+  return { loggedIn: clientStatus === "connected", status: clientStatus };
 }
 
 export async function getWhatsAppQR() {
-  return {
-    enabled: true,
-    qr: null,
-    provider: "web",
-    message: "QR flow is disabled. Sending uses direct WhatsApp Web automation.",
-  };
+  if (!usingWebProvider) {
+    return { loggedIn: true, qr: null, provider: "callmebot" };
+  }
+
+  if (usingManualWeb) {
+    return { loggedIn: true, qr: null, provider: "web", mode: "manual" };
+  }
+
+  if (clientStatus === "connected") return { loggedIn: true, qr: null };
+  if (!client) getClient();
+  return { loggedIn: false, qr: currentQR };
 }
 
 export async function sendWhatsAppWebMessage(record) {
-  await sendRecordWithBrowser(record);
+  if (!usingWebProvider) {
+    throw new Error("WhatsApp Web is disabled. Use the CallMeBot reminder flow instead.");
+  }
+
+  if (usingManualWeb) {
+    return {
+      mode: "manual",
+      openUrl: buildWhatsAppWebUrl(record),
+    };
+  }
+
+  if (clientStatus !== "connected")
+    throw new Error("WhatsApp is not connected. Please scan the QR code first.");
+
+  const phone = String(record.phoneNumber || "").trim().replace(/\D/g, "");
+  if (!phone) throw new Error("Phone number is missing");
+
+  await client.sendMessage(`${phone}@c.us`, buildReminderMessage(record));
+  return { mode: "auto" };
+}
+
+function normalizePhoneForWeb(phoneNumber) {
+  const raw = String(phoneNumber || "").trim();
+  if (!raw) return "";
+  return raw.replace(/\D/g, "");
+}
+
+function buildWhatsAppWebUrl(record) {
+  const query = new URLSearchParams({
+    phone: normalizePhoneForWeb(record.phoneNumber),
+    text: buildReminderMessage(record),
+  });
+  return `https://web.whatsapp.com/send?${query.toString()}`;
 }
 
 export async function sendWhatsAppWebMessages(records) {
+  if (!usingWebProvider) {
+    throw new Error("WhatsApp Web is disabled. Use the CallMeBot reminder flow instead.");
+  }
+
+  if (usingManualWeb) {
+    const openUrls = records
+      .filter((record) => normalizePhoneForWeb(record.phoneNumber))
+      .map((record) => buildWhatsAppWebUrl(record));
+    return { openUrls, mode: "manual" };
+  }
+
+  if (clientStatus !== "connected")
+    throw new Error("WhatsApp is not connected. Please scan the QR code first.");
+
   let sentCount = 0;
   let failedCount = 0;
-  const sentRecords = [];
-  const failedRecords = [];
 
   for (const record of records) {
     try {
       await sendWhatsAppWebMessage(record);
       sentCount += 1;
-      sentRecords.push(record);
     } catch (error) {
       failedCount += 1;
-      failedRecords.push({ record, error: error?.message || String(error) });
-      console.error(`WhatsApp Web send failed for ${record.phoneNumber}`, error.message);
+      console.error(`WhatsApp send failed for ${record.phoneNumber}`, error.message);
     }
   }
 
-  return { sentCount, failedCount, sentRecords, failedRecords };
+  return { sentCount, failedCount };
 }

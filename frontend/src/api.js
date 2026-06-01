@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+const API_BASE = "http://localhost:5000/api";
 
 export function getToken() {
   return localStorage.getItem("authToken") || "";
@@ -92,24 +92,6 @@ export async function deleteRecord(recordId) {
   return data;
 }
 
-export async function fetchWhatsAppStatus() {
-  const res = await fetch(`${API_BASE}/whatsapp-web/status`, {
-    headers: authHeaders(),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Failed to get WhatsApp status");
-  return data;
-}
-
-export async function fetchWhatsAppQR() {
-  const res = await fetch(`${API_BASE}/whatsapp-web/qr`, {
-    headers: authHeaders(),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || "Failed to get QR code");
-  return data;
-}
-
 export async function sendWhatsAppWeb(file) {
   const formData = new FormData();
   if (file) {
@@ -138,6 +120,30 @@ export async function sendWhatsAppWebNearExpiry() {
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.message || "WhatsApp Web send failed");
+  }
+  return data;
+}
+
+export async function fetchWhatsAppStatus() {
+  const res = await fetch(`${API_BASE}/whatsapp-web/status`, {
+    headers: authHeaders(),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to fetch WhatsApp status");
+  }
+  return data;
+}
+
+export async function fetchWhatsAppQr() {
+  const res = await fetch(`${API_BASE}/whatsapp-web/qr`, {
+    headers: authHeaders(),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to fetch WhatsApp QR");
   }
   return data;
 }

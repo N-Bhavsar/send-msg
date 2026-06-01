@@ -3,9 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   fetchRecords,
   deleteRecord,
+  fetchWhatsAppQr,
+  fetchWhatsAppStatus,
   loginApi,
   runReminderCheck,
   sendReminderNow,
+  sendWhatsAppWeb,
   sendWhatsAppWebNearExpiry,
   uploadFile,
 } from "./api";
@@ -93,6 +96,12 @@ function DashboardPage() {
   const [runningReminder, setRunningReminder] = useState(false);
   const [sendingRecordId, setSendingRecordId] = useState("");
   const [deletingRecordId, setDeletingRecordId] = useState("");
+  const [sendingWeb, setSendingWeb] = useState(false);
+  const [sendingNearExpiry, setSendingNearExpiry] = useState(false);
+  const [whatsAppStatus, setWhatsAppStatus] = useState(null);
+  const [whatsAppQr, setWhatsAppQr] = useState("");
+  const [whatsAppLoading, setWhatsAppLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
@@ -153,6 +162,7 @@ function DashboardPage() {
     }
 
     loadRecords();
+    loadWhatsAppStatus();
   }, [navigate]);
 
   async function loadRecords() {
@@ -166,6 +176,30 @@ function DashboardPage() {
       } else {
         setError(err.message);
       }
+    }
+  }
+
+  async function loadWhatsAppStatus() {
+    try {
+      const status = await fetchWhatsAppStatus();
+      setWhatsAppStatus(status);
+    } catch (err) {
+      setWhatsAppStatus({ status: "error", message: err.message });
+    }
+  }
+
+  async function handleShowQr() {
+    setWhatsAppLoading(true);
+    setError("");
+
+    try {
+      const result = await fetchWhatsAppQr();
+      setWhatsAppQr(result.qr || "");
+      setShowQr(true);
+    } catch (err) {
+      setError(err.message || "Failed to load WhatsApp QR");
+    } finally {
+      setWhatsAppLoading(false);
     }
   }
 
@@ -215,10 +249,11 @@ function DashboardPage() {
 
     try {
       const result = await sendReminderNow(row.id);
-      setStatus(result.message || `WhatsApp sent to ${row.name}`);
+      setStatus(result.message || `Reminder sent to ${row.name}`);
       await loadRecords();
+      await loadWhatsAppStatus();
     } catch (err) {
-      setError(err.message || "WhatsApp send failed");
+      setError(err.message || "Failed to send reminder");
     } finally {
       setSendingRecordId("");
     }
@@ -244,19 +279,37 @@ function DashboardPage() {
     }
   }
 
+  async function handleSendWhatsAppWeb() {
+    setError("");
+    setStatus("");
+    setSendingWeb(true);
+
+    try {
+      const result = await sendWhatsAppWeb(file);
+      setStatus(`WhatsApp Web done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`);
+      await loadRecords();
+      await loadWhatsAppStatus();
+    } catch (err) {
+      setError(err.message || "WhatsApp Web send failed");
+    } finally {
+      setSendingWeb(false);
+    }
+  }
+
   async function handleSendNearExpiry() {
     setError("");
     setStatus("");
-    setRunningReminder(true);
+    setSendingNearExpiry(true);
 
     try {
       const result = await sendWhatsAppWebNearExpiry();
-      setStatus(`WhatsApp send done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`);
+      setStatus(`WhatsApp Web done. Sent: ${result.sentCount}, Failed: ${result.failedCount}`);
       await loadRecords();
+      await loadWhatsAppStatus();
     } catch (err) {
-      setError(err.message || "WhatsApp send failed");
+      setError(err.message || "WhatsApp Web send failed");
     } finally {
-      setRunningReminder(false);
+      setSendingNearExpiry(false);
     }
   }
 
@@ -303,10 +356,19 @@ function DashboardPage() {
           <button onClick={handleUpload} disabled={loading}>
             {loading ? "Uploading..." : "Upload File"}
           </button>
-          <button onClick={handleSendNearExpiry} disabled={runningReminder}>
-            {runningReminder ? "Sending..." : "Send All (Near Expiry)"}
+          <button onClick={handleShowQr} disabled={whatsAppLoading}>
+            {whatsAppLoading ? "Loading QR..." : "Connect WhatsApp"}
+          </button>
+          <button onClick={handleSendNearExpiry} disabled={sendingNearExpiry}>
+            {sendingNearExpiry ? "Sending..." : "Send All (Near Expiry)"}
           </button>
         </div>
+
+        {whatsAppStatus?.status ? (
+          <p className="status-pill">
+            WhatsApp: {whatsAppStatus.status}
+          </p>
+        ) : null}
 
         {status ? <p className="ok">{status}</p> : null}
         {error ? <p className="error">{error}</p> : null}
@@ -378,6 +440,32 @@ function DashboardPage() {
           </table>
         </div>
       </div>
+
+      {showQr ? (
+        <div className="modal">
+          <div className="modal-card">
+            <div className="modal-header">
+              <h2>Scan WhatsApp QR</h2>
+              <button className="ghost-btn" onClick={() => setShowQr(false)}>
+                Close
+              </button>
+            </div>
+            {whatsAppQr ? (
+              <img className="qr-image" src={whatsAppQr} alt="WhatsApp QR" />
+            ) : (
+              <p className="muted">QR not ready. Click refresh.</p>
+            )}
+            <div className="modal-actions">
+              <button onClick={handleShowQr} disabled={whatsAppLoading}>
+                Refresh QR
+              </button>
+              <button className="ghost-btn" onClick={loadWhatsAppStatus}>
+                Check status
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

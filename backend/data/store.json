@@ -1,28 +1,12 @@
 {
   "records": [
     {
-      "id": "1779355067849-0",
-      "name": "DEVRAJBHAI LALJIBHAI SAVANI",
-      "phoneNumber": "+919879822886",
-      "vehicleNumber": "GJ04DN3409",
-      "expiryDate": "2026-01-07T18:30:00.000Z",
-      "lastReminderSentOn": null
-    },
-    {
-      "id": "1779355067850-1",
-      "name": "KAMLESHBHAI MAGANBHAI SONANI",
-      "phoneNumber": "+919825234023",
-      "vehicleNumber": "GJ04CK5980",
-      "expiryDate": "2026-01-03T18:30:00.000Z",
-      "lastReminderSentOn": null
-    },
-    {
       "id": "1779355067850-2",
       "name": "SAMIRBHAI KAMLESHBHAI SOMANI",
       "phoneNumber": "+919825234023",
       "vehicleNumber": "GJ04DP9728",
       "expiryDate": "2026-01-04T18:30:00.000Z",
-      "lastReminderSentOn": null
+      "lastReminderSentOn": "2026-06-01"
     },
     {
       "id": "1779355067850-3",
@@ -3976,5 +3960,9 @@
       "expiryDate": "2027-01-29T18:30:00.000Z",
       "lastReminderSentOn": null
     }
+  ],
+  "deletedKeys": [
+    "919879822886::gj04dn3409",
+    "919825234023::gj04ck5980"
   ]
 }

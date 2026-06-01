@@ -66,10 +66,14 @@ export async function processDailyReminders() {
     }
 
     try {
-      await sendWhatsAppWebMessage(record);
-      record.lastReminderSentOn = todayStamp;
-      sentCount += 1;
-      hasUpdates = true;
+      const result = await sendWhatsAppWebMessage(record);
+      if (result?.mode === "manual") {
+        skippedCount += 1;
+      } else {
+        record.lastReminderSentOn = todayStamp;
+        sentCount += 1;
+        hasUpdates = true;
+      }
     } catch (error) {
       skippedCount += 1;
       console.error(`Reminder failed for ${record.phoneNumber}`, error.message);
@@ -93,14 +97,17 @@ export async function sendReminderForRecord(recordId) {
     throw new Error("Record not found");
   }
 
-  await sendWhatsAppWebMessage(record);
-  record.lastReminderSentOn = new Date().toISOString().slice(0, 10);
-  writeStore(store);
+  const result = await sendWhatsAppWebMessage(record);
+  if (result?.mode !== "manual") {
+    record.lastReminderSentOn = new Date().toISOString().slice(0, 10);
+    writeStore(store);
+  }
 
   return {
-    skipped: false,
+    skipped: result?.mode === "manual",
     phoneNumber: record.phoneNumber,
     name: record.name,
+    ...result,
   };
 }
 

@@ -13,6 +13,13 @@ const whatsappProvider = process.env.WHATSAPP_PROVIDER || "web";
 
 const rawExecutablePath =
   process.env.WHATSAPP_WEB_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || "";
+const commonWindowsChromePaths = [
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+];
+
 const commonLinuxChromePaths = [
   "/usr/bin/google-chrome",
   "/usr/bin/google-chrome-stable",
@@ -26,7 +33,11 @@ function resolveExecutablePath() {
     return rawExecutablePath;
   }
 
-  for (const candidate of commonLinuxChromePaths) {
+  const platformPaths = process.platform === "win32"
+    ? commonWindowsChromePaths
+    : commonLinuxChromePaths;
+
+  for (const candidate of platformPaths) {
     if (existsSync(candidate)) {
       return candidate;
     }
@@ -43,7 +54,7 @@ if (rawExecutablePath && !executablePath) {
   );
 } else if (!rawExecutablePath && !executablePath) {
   console.warn(
-    "No Chrome/Chromium executable was found on this machine. WhatsApp Web automation will rely on Puppeteer's downloaded browser."
+    "No Chrome/Edge executable was found on this machine. Set WHATSAPP_WEB_EXECUTABLE_PATH to use a system browser."
   );
 }
 
@@ -62,6 +73,8 @@ export const config = {
   },
   whatsappWeb: {
     enabled: whatsappProvider === "web" && process.env.WHATSAPP_WEB_ENABLED !== "false",
+    mode: process.env.WHATSAPP_WEB_MODE || "auto",
+    allowBundledBrowser: process.env.WHATSAPP_WEB_ALLOW_BUNDLED_BROWSER === "true",
     authStrategy:
       process.env.WHATSAPP_WEB_AUTH_STRATEGY || (process.env.RENDER === "true" ? "noauth" : "localauth"),
     userDataDir:
